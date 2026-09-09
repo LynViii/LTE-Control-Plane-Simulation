@@ -1,0 +1,13 @@
+id: NORMAL
+fault:
+  enabled: false
+  stage: authentication
+  task: NAS
+  primitive: AUTH_RESPONSE_IND
+  fault_type: MODIFY_FIELD
+  field: auth_result
+  value: REJECT
+  delay_ms: 0
+  timeout_ms: 3000
+  layer: primitive
+  fault_id: ''

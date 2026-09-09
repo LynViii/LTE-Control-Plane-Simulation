@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lte-control-plane-sim"
+version = "6.0.3"
+description = "LTE control-plane Attach engineering simulator with Web UI and packaged Windows EXE"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "cryptography>=43,<47",
+  "jsonschema>=4.23,<5",
+  "PyYAML>=6,<7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+embedded = ["pywebview>=5.4,<6"]
+embedded-build = ["pywebview>=5.4,<6", "pyinstaller>=6.21,<7", "Pillow>=11,<13"]
+
+[project.scripts]
+lte-sim-web = "lte_sim.web_app:main"
+lte-sim-embedded = "lte_sim.embedded_app:main"
+lte-sim = "lte_sim.cli:main"
+lte-sim-modem-agent = "lte_sim.modem_agent:main"
+lte-sim-security = "lte_sim.security_engine.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+lte_sim = ["web/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["devtools/tests"]
+addopts = "-ra"

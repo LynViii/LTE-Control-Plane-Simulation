@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<meta content="light" name="color-scheme"/>
+<title>LTE 控制面系统仿真平台</title>
+<link href="/favicon.svg" rel="icon" type="image/svg+xml"/>
+<link href="/styles.css" rel="stylesheet"/>
+<link href="/ui.css" rel="stylesheet"/>
+</head>
+<body>
+<a class="skip-link" href="#workspaceMain">跳到仿真工作区</a>
+<header class="topbar">
+<div class="brand">
+<div class="brand-mark">LTE</div>
+<div>
+<p class="eyebrow">Engineering Workspace</p>
+<h1>LTE 控制面系统仿真平台</h1>
+</div>
+</div>
+<div aria-label="服务状态" class="health-strip">
+<span class="health-chip" id="httpHealth"><i></i> Web</span>
+<span class="health-chip" id="apHealth"><i></i> AP</span>
+<span class="health-chip" id="enbHealth"><i></i> eNB</span>
+<span class="version-chip" id="versionChip">v--</span>
+<button class="top-settings-button" id="openSettingsButton" type="button" aria-haspopup="dialog" aria-controls="settingsDialog">⚙ 设置</button>
+</div>
+</header>
+<main class="app-shell" id="workspaceMain" tabindex="-1">
+<section class="global-toolbar v513-toolbar" aria-label="全局运行工具栏">
+  <section class="toolbar-config-row" aria-label="网络与故障配置">
+    <div class="toolbar-config-title"><span class="eyebrow">Configuration</span><strong>网络与故障条件</strong></div>
+    <div class="toolbar-config-controls">
+      <div class="toolbar-config-mainline">
+        <label class="field-label" for="scenarioSelect">运行条件</label>
+        <select class="select-control" id="scenarioSelect"></select>
+        <button class="secondary-button" id="openCustomFaultButton" type="button">自定义故障</button>
+        <button class="toolbar-fault-state" id="toolbarFaultState" data-active="false" type="button" title="查看当前故障注入参数">
+          <span class="status-dot"></span><span><strong>正常网络</strong><small>未启用故障注入</small></span>
+        </button>
+      </div>
+      <span class="toolbar-help" id="scenarioDescription">默认正常网络</span>
+    </div>
+    <span class="live-dot" id="eventDot" title="实时状态连接"></span>
+  </section>
+  <section class="toolbar-run-row" aria-label="运行控制">
+    <div class="toolbar-run-title"><span class="eyebrow">Runtime</span><strong>运行控制</strong><small>开始/中断控制当前事务；关闭无线执行 CFUN=0；系统重置恢复初始运行态，历史归档保留。</small></div>
+    <div class="toolbar-actions">
+      <button class="primary-button" id="attachButton" type="button">开始 Attach</button>
+      <button class="secondary-button" id="stopAttachButton" type="button">中断当前流程</button>
+      <button class="secondary-button" id="detachButton" type="button">关闭无线（CFUN=0）</button>
+      <button class="quiet-button" id="resetButton" type="button">系统重置</button>
+    </div>
+  </section>
+  <div class="connection-strip" aria-label="运行连接信息">
+    <span><b>Mode</b><i id="runModeValue">--</i></span>
+    <span><b>Web</b><i id="httpPort">--</i></span>
+    <span><b>AP</b><i id="apPort">--</i></span>
+    <span><b>eNB</b><i id="enbPort">--</i></span>
+    <span><b>管理</b><i id="managementPort">--</i></span>
+    <span><b>事务</b><i id="transactionId">--</i></span>
+  </div>
+</section>
+<section class="main-stage">
+<section aria-label="关键状态" class="status-grid">
+<article class="metric-card emphasized" data-target-view="overview" role="button" tabindex="0">
+<p>Attach</p>
+<strong id="attachStatus">DETACHED</strong>
+<span id="attachHint">等待启动</span>
+</article>
+<article class="metric-card" data-target-view="overview" role="button" tabindex="0">
+<p>进度</p>
+<strong id="flowProgress">0 / 11</strong>
+<span id="durationValue">耗时 --</span>
+<div aria-hidden="true" class="run-progress">
+<i id="runProgressFill"></i>
+</div>
+<small id="runProgressLabel">0%</small>
+</article>
+<article class="metric-card" data-target-view="overview" role="button" tabindex="0">
+<p>Serving Cell</p>
+<strong id="cellValue">未驻留</strong>
+<span id="plmnValue">PLMN -- · TAC --</span>
+</article>
+<article class="metric-card" id="runStatsCard" role="button" tabindex="0">
+<p>本次会话</p>
+<strong id="metricSuccess">0 / 0</strong>
+<span id="metricFailures">失败 0 · 取消 0</span>
+</article>
+</section>
+<section aria-live="polite" class="panel lan-guide-panel" hidden="" id="lanGuidePanel">
+<div class="panel-heading">
+<div><p class="eyebrow">LAN Controller</p><h2>LAN 模式操作流程</h2></div>
+<button class="secondary-button" id="lanTestButton" type="button">测试连接</button>
+</div>
+<div class="lan-guide-grid">
+<ol class="lan-steps">
+<li>两台电脑连接同一个局域网 / Wi-Fi。</li>
+<li>电脑 B 启动 <strong>LTE-Modem-Node-Agent.exe</strong>。</li>
+<li>确认电脑 B 的局域网 IPv4，并与启动向导中的 Modem IP 一致。</li>
+<li>确认 AP-Modem / Modem-eNB / Management 端口与 token 两端一致。</li>
+<li>点击“测试连接”，确认 Agent、Management 与两条协议 Socket 均 READY。</li>
+<li>状态正常后再进行 Attach；Modem→eNB 会在真实协议消息发生时建立 TCP。</li>
+</ol>
+<dl class="lan-status-list">
+<div><dt>Controller IP</dt><dd id="lanControllerIp">--</dd></div>
+<div><dt>Modem IP</dt><dd id="lanModemIp">--</dd></div>
+<div><dt>Modem Agent</dt><dd id="lanAgentStatus">--</dd></div>
+<div><dt>AP-Modem Socket</dt><dd id="lanApStatus">--</dd></div>
+<div><dt>Modem-eNB Socket</dt><dd id="lanEnbStatus">--</dd></div>
+<div><dt>Management</dt><dd id="lanManagementStatus">--</dd></div>
+<div><dt>Heartbeat</dt><dd id="lanHeartbeat">--</dd></div>
+<div><dt>LAN Web</dt><dd id="lanExternalWeb">--</dd></div>
+</dl>
+</div>
+<div class="inline-error lan-error" hidden="" id="lanLastError" role="alert"></div>
+<p class="field-help">失败时优先检查：同一局域网、Agent 是否启动、IP、Windows 防火墙、端口占用以及 Management token 是否一致。</p>
+</section>
+<nav aria-label="仿真面板导航" class="workspace-nav" role="tablist">
+<button aria-controls="panel-overview" aria-selected="true" class="workspace-tab active" data-view="overview" id="tab-overview" role="tab" tabindex="0" type="button">
+<strong>Attach</strong></button><button aria-controls="panel-at" aria-selected="false" class="workspace-tab" data-view="at" id="tab-at" role="tab" tabindex="-1" type="button">
+<strong>AT / Socket</strong></button><button aria-controls="panel-tasks" aria-selected="false" class="workspace-tab" data-view="tasks" id="tab-tasks" role="tab" tabindex="-1" type="button">
+<strong>Task / Trace</strong></button><button aria-controls="panel-security" aria-selected="false" class="workspace-tab" data-view="security" id="tab-security" role="tab" tabindex="-1" type="button">
+<strong>Security</strong></button><button aria-controls="panel-debug" aria-selected="false" class="workspace-tab" data-view="debug" id="tab-debug" role="tab" tabindex="-1" type="button">
+<strong>诊断</strong>
+</button>
+</nav>
+<section aria-hidden="false" aria-labelledby="tab-overview" class="view-panel active" data-view-panel="overview" id="panel-overview" role="tabpanel">
+<section aria-live="polite" class="panel fault-summary v51-fault-summary">
+  <div class="current-fault-copy"><span class="eyebrow">运行条件</span><h2 id="currentFaultStatus">正常网络</h2><p id="currentFaultSummary">本轮不注入故障</p><div class="fault-param-chips" id="currentFaultParamChips" hidden></div></div>
+  <div class="fault-summary-actions"><button class="mini-button" id="showFaultParametersButton" type="button">查看注入参数</button><div hidden id="failureLinks" class="failure-links"><strong id="failureRootSummary"></strong><button class="text-button" id="goFailureTrace" type="button">定位异常原语</button><button class="text-button" id="goFailureDiagnosis" type="button">查看根因</button></div></div>
+</section>
+
+<section class="panel topology-panel">
+<div class="panel-heading">
+<div>
+<h2>系统拓扑</h2>
+</div>
+<span class="panel-note">TCP + TaskBus</span>
+</div>
+<div class="topology">
+<div class="node ap-node">
+<span>Application Processor</span>
+<strong>AP</strong>
+<small>AT 控制 / 状态查询</small>
+</div>
+<div class="link-block">
+<span>TCP <b id="apPortInline">5000</b></span>
+<div class="link-line"><i class="signal-token" id="apSignalToken"></i></div>
+<small>真实 TCP · AT Command</small>
+</div>
+<div class="node modem-node">
+<span>Baseband</span>
+<strong>Modem</strong>
+<div class="task-row">
+<em>NAS</em><em>RRC</em><em>L2</em><em>L1</em>
+</div>
+</div>
+<div class="link-block">
+<span>TCP <b id="enbPortInline">5001</b></span>
+<div class="link-line"><i class="signal-token" id="enbSignalToken"></i></div>
+<small>真实 TCP · 控制消息</small>
+</div>
+<div class="node enb-node">
+<span>Radio Network + EPC Stub</span>
+<strong>eNB / MME</strong>
+<small>MIB/SIB · RA · RRC · NAS</small>
+</div>
+</div>
+<p class="topology-live-summary" id="topologyLiveSummary" role="status">等待 Attach；动画只在真实消息或步骤变化时触发。</p>
+<div class="control-observability-strip" aria-label="控制面实时观测">
+  <span><b>当前阶段</b><i id="liveStageValue">等待启动</i></span>
+  <span><b>活跃 Task</b><i id="liveTaskValue">--</i></span>
+  <span><b>TaskBus 队列</b><i id="liveQueueValue">0</i></span>
+  <span><b>最近原语</b><i id="livePrimitiveValue">--</i></span>
+  <span><b>运行中 Timer</b><i id="liveTimerValue">0</i></span>
+  <span><b>eNB RTT</b><i id="liveRttValue">--</i></span>
+  <span><b>网络侧判定</b><i id="liveDecisionValue">--</i></span>
+</div>
+<div class="topology-boundary-legend" aria-label="仿真边界说明">
+  <span data-kind="real">真实 Socket</span><span data-kind="task">TaskBus / Queue</span><span data-kind="model">协议消息简化模型</span>
+</div>
+</section>
+<div class="two-column-grid">
+<section class="panel flow-panel">
+<div class="panel-heading">
+<div>
+<h2>Attach 流程</h2>
+</div>
+<div class="panel-actions"><span class="panel-note" id="flowStateText">Idle</span><button class="mini-button" id="showFlowGuideButton" type="button">查看流程讲解</button></div>
+</div>
+<ol class="flow-steps" id="flowSteps"></ol>
+</section>
+<section class="panel radio-panel">
+<div class="panel-heading">
+<div>
+<h2>MIB / SIB</h2>
+</div>
+<span class="small-badge" id="cfunBadge">CFUN 0</span>
+</div>
+<div class="radio-grid">
+<div class="info-group">
+<h3>MIB</h3>
+<dl>
+<div>
+<dt>DL Bandwidth</dt>
+<dd id="mibBandwidth">--</dd>
+</div>
+<div>
+<dt>SFN</dt>
+<dd id="mibSfn">--</dd>
+</div>
+<div>
+<dt>PHICH</dt>
+<dd id="mibPhich">--</dd>
+</div>
+</dl>
+</div>
+<div class="info-group">
+<h3>SIB（简化）</h3>
+<dl>
+<div>
+<dt>Cell Barred</dt>
+<dd id="sibBarred">--</dd>
+</div>
+<div>
+<dt>qRxLevMin</dt>
+<dd id="sibQrx">--</dd>
+</div>
+<div>
+<dt>PLMN</dt>
+<dd id="sibPlmn">--</dd>
+</div>
+<div>
+<dt>TAC</dt>
+<dd id="sibTac">--</dd>
+</div>
+</dl>
+</div>
+</div>
+<div class="error-banner" hidden="" id="lastError">
+<div>
+<strong id="lastErrorTitle">最近失败</strong><span id="lastErrorText"></span>
+</div>
+<button class="error-link-button" id="lastErrorAction" type="button">
+                  查看诊断
+                </button>
+</div>
+</section>
+</div>
+</section>
+<section aria-hidden="true" aria-labelledby="tab-at" class="view-panel" data-view-panel="at" id="panel-at" role="tabpanel">
+<div class="view-grid two-up">
+<section class="rail-card native-view-card">
+<div class="panel-heading simple-heading"><h2>AT 终端</h2><button class="mini-button" id="showAtHistoryButton" type="button">AT 历史</button></div>
+<form class="command-form" id="commandForm">
+<input aria-label="AT 指令" autocomplete="off" id="commandInput" spellcheck="false" value="AT+CFUN=1"/>
+<button class="compact-button" type="submit">发送</button>
+</form>
+<div class="quick-actions" id="quickActions">
+<button data-command="AT" type="button">AT</button>
+<button data-command="AT+CFUN?" type="button">CFUN?</button>
+<button data-command="AT+CGATT?" type="button">CGATT?</button>
+<button data-command="AT+CREG?" type="button">CREG?</button>
+<button data-command="AT+CSQ" type="button">CSQ</button>
+<button data-command="AT+CELL?" type="button">CELL?</button>
+<button data-command="AT+COPS?" type="button">COPS?</button>
+<button data-command="AT+SEC?" type="button">SEC?</button>
+<button data-command="AT+TASK?" type="button">TASK?</button>
+<button data-command="AT+HELP" type="button">HELP</button>
+</div>
+<div class="terminal-output" id="commandFeedback" role="status">
+                输入 AT 指令或使用快捷命令
+              </div>
+</section>
+<section class="panel runtime-panel">
+<div class="panel-heading">
+<div>
+<h2>Socket 状态</h2>
+</div>
+<span class="panel-note">RTT / errors</span>
+</div>
+<div class="transport-runtime">
+<div class="transport-card">
+<span>AP → Modem</span>
+<strong id="apCommandCount">0 commands</strong>
+<small id="apLastCommand">last: --</small>
+<em id="apCommandErrors">errors 0</em>
+</div>
+<div class="transport-card">
+<span>Modem ↔ eNB</span>
+<strong id="enbSocketCount">0 tx / 0 rx</strong>
+<small id="enbSocketRtt">RTT -- · req --</small>
+<em id="enbSocketErrors">errors 0</em>
+</div>
+</div>
+</section>
+</div>
+<div class="runtime-grid inspector-grid packet-inspector-only">
+<section class="panel runtime-panel">
+<div class="panel-heading">
+<div><h2>Packet Inspector</h2></div>
+<span class="panel-note">最近 80 条</span>
+</div>
+<div class="mini-table-wrap">
+<table class="mini-table">
+<thead>
+<tr>
+<th>时间</th>
+<th>方向</th>
+<th>消息</th>
+<th>Bytes</th>
+<th>RTT</th>
+</tr>
+</thead>
+<tbody id="packetTraceBody"></tbody>
+</table>
+<div class="empty-primitive" id="emptyPacketTrace">
+                  等待 Socket 数据…
+                </div>
+</div>
+</section>
+</div>
+</section>
+<section aria-hidden="true" aria-labelledby="tab-tasks" class="view-panel" data-view-panel="tasks" id="panel-tasks" role="tabpanel">
+  <section class="task-strip" id="taskRuntimeCards"></section>
+  <div class="trace-layout">
+    <section class="panel trace-main-panel">
+      <div class="panel-heading"><div><p class="eyebrow">TaskBus / Trace</p><h2>控制面事件时间线</h2></div><span class="panel-note">关键链路默认去掉重复生命周期事件；需要时切换到全部原语</span></div>
+      <div class="trace-toolbar">
+        <select id="traceViewMode" aria-label="选择 Trace 观察级别"><option value="key">关键链路</option><option value="diagnostic">诊断事件</option><option value="all">全部原语</option></select>
+        <select id="filterTask" aria-label="按 Task 筛选"><option value="">全部 Task</option><option>NAS</option><option>RRC</option><option>L2</option><option>L1</option></select>
+        <input id="filterPrimitive" type="search" placeholder="搜索 Primitive / 流程关联 ID" aria-label="搜索原语或流程关联 ID"/>
+        <label class="trace-fault-toggle"><input id="filterFaultOnly" type="checkbox"/> 仅看异常</label>
+        <button class="quiet-button" id="clearTraceFilters" type="button">重置筛选</button>
+        <button class="quiet-button" id="exportTraceButton" type="button">导出 Trace</button>
+      </div>
+      <div class="primitive-table-wrap">
+        <table class="primitive-table v51-trace-table">
+          <thead><tr><th>时间</th><th>Task</th><th>Primitive</th><th>阶段</th><th>状态</th><th>流程关联 ID</th></tr></thead>
+          <tbody id="primitiveTraceBody"></tbody>
+        </table>
+        <div class="empty-primitive" id="emptyPrimitiveTrace">等待 TaskBus 原语事件…</div>
+      </div>
+    </section>
+    <aside class="panel trace-detail-panel">
+      <div class="panel-heading"><div><p class="eyebrow">Selected Primitive</p><h2>原语详情</h2></div><span class="panel-note" id="traceDetailStatus">未选择</span></div>
+      <div class="trace-detail-empty" id="traceDetailEmpty">从左侧选择一条原语。这里固定展示参数快照、Before → After、Expected → Actual、计时器和流程关联 ID，不再逐行展开菜单。</div>
+      <div class="trace-detail" id="traceDetailPanel" hidden></div>
+      <div class="fault-evidence-summary" id="faultEvidenceDetails"></div>
+      <div class="correlation-timeline" id="correlationEvents"></div>
+    </aside>
+  </div>
+</section>
+<section aria-hidden="true" aria-labelledby="tab-security" class="view-panel" data-view-panel="security" id="panel-security" role="tabpanel">
+  <section class="panel security-panel v53-security">
+    <div class="panel-heading security-heading-v53">
+      <div><p class="eyebrow">Security</p><h2>NAS Security + SRTP 实际验证</h2></div>
+      <div class="panel-actions"><span class="small-badge" id="securityStatusBadge">检查 Security Core…</span></div>
+    </div>
+    <div class="security-status-strip-v54">
+      <span><b>NAS 协商</b><i id="nasNegotiatedValue">未协商</i><small><em id="nasCipherValue">--</em> / <em id="nasIntegrityValue">--</em></small></span>
+      <span><b>SRTP 配置</b><i id="securityProfileValue">--</i><small><em id="srtpCipherValue">--</em> / <em id="srtpAuthValue">--</em></small></span>
+      <span><b>加密执行层</b><i id="securityBindingVersion">--</i><small id="securityBackendValue">项目内置 Security Core</small></span>
+      <span><b>会话状态</b><i id="securitySessionStatus">未建立</i><small><em id="securityKeyId">--</em> · <em id="securityPacketCount">0</em> 包</small></span>
+      <span class="security-hidden-meta" hidden><i id="securityProtocolImpl">项目内置</i><i id="securityTestBoundary">独立可测</i><i id="securityIntegrationSummary">--</i><i id="securityLibsrtpValue">--</i></span>
+    </div>
+    <div class="security-source-strip" aria-label="Security 实现代码位置"><code>security_engine/core.py</code><code>security_engine/service.py</code><code>security_engine/udp_lab.py</code></div>
+    <div class="security-explain-strip" aria-label="Security 中文说明"><p><strong>区域说明：</strong>NAS 协商状态来自 Attach 的 Security Mode；SRTP Lab 使用独立 Security Core。Core 健康检查只验证协议状态和标准向量，端到端链路验证才执行 Sender → SRTP Protect → UDP → Receiver Verify/Unprotect。</p></div>
+    <section class="security-standalone-proof" aria-label="独立 Security Demo">
+      <div class="security-standalone-head"><div><strong>独立 SRTP Demo · 后端直接执行</strong><span>不启动 LTE 附着流程，不读取场景名称/故障配置，也不依赖 Web 页面状态；直接调用 StandaloneSrtpModule 的原始 RTP/SRTP 字节接口。</span></div><span class="small-badge">独立模块原型</span></div>
+      <div class="security-standalone-actions"><div><b>推荐方式</b><span>直接点击右侧按钮：由当前后端进程调用独立 <code>StandaloneSrtpModule</code>，不会额外弹出 PowerShell/CMD 窗口。</span></div><div><b>源码复核</b><span>需要命令行交叉验证时再运行 <code>scripts\windows\security-demo.cmd</code>；该脚本依赖项目 Python 环境，并会保存 JSON 后打开结果。</span></div><button class="primary-button" id="securityStandaloneDemoButton" type="button">运行后端独立 Demo</button></div>
+      <div class="security-standalone-result" id="securityStandaloneResult"><strong>尚未运行</strong><span>点击后结果直接显示在本页，同时由后端保存 JSON 证据；不会启动 LTE Attach，也不会读取 Scenario/FaultConfig。</span></div>
+    </section>
+    <section class="security-accuracy-matrix" aria-label="Security 准确性验证矩阵">
+      <div class="security-accuracy-title"><strong>准确性验证层次</strong><span>四层证据互相独立：标准答案、协议状态、参考实现、真实网络链路。</span></div>
+      <div class="security-accuracy-grid">
+        <article><b>① RFC 标准向量</b><strong id="securityVectorValidation">待检查</strong><small>RFC 3711 / RFC 2202 known-answer vectors</small></article>
+        <article><b>② Core 状态与边界</b><strong id="securityCoreValidation">待检查</strong><small>ROC / Replay / Header / 并发 / fuzz</small></article>
+        <article><b>③ 参考实现差分</b><strong id="securityReferenceValidation">可选</strong><small>安装 pylibsrtp 后与 libSRTP 双向对照</small></article>
+        <article><b>④ 真实 UDP 端到端</b><strong id="securityUdpValidation">待运行</strong><small>Sender → protect → UDP → verify/unprotect</small></article>
+      </div>
+    </section>
+    <div class="security-controls-v53 security-workflow-v56">
+      <section class="security-selftest-row-v56" aria-label="Security Core 健康检查">
+        <div><strong>① Core 健康检查</strong><span>验证 SRTP Core 状态机、Replay/ROC 和 RFC 标准向量；不执行 UDP 场景。</span></div>
+        <button class="secondary-button security-selftest-trigger" id="securitySelfTestButton" type="button">运行 Core 健康检查</button>
+      </section>
+      <section class="security-verification-row-v56" aria-label="端到端链路验证">
+        <div class="security-verification-title"><strong>② 端到端链路验证</strong><span>Sender → SRTP Core → UDP → Receiver；正常与异常场景统一从这里运行。</span></div>
+        <label class="security-payload-v53" for="securityPlaintext"><span>Payload</span><input id="securityPlaintext" value="VoLTE SRTP security demo packet" aria-label="Security 测试 Payload"/></label>
+        <div class="security-actions-v53 security-actions-v56" id="srtpScenarioActions">
+          <select id="srtpScenarioSelect" aria-label="选择实际验证场景">
+            <option value="NORMAL">正常链路</option>
+            <option value="TAMPER_TAG">篡改认证 Tag</option>
+            <option value="WRONG_KEY">接收端错误 Key</option>
+            <option value="REPLAY">Replay 重放</option>
+            <option value="OUT_OF_ORDER">乱序</option>
+            <option value="ROLLOVER">Sequence 回绕</option>
+            <option value="MULTI_PACKET">连续多包</option>
+            <option value="HEADER_VARIANTS">RTP Header 组合</option>
+          </select>
+          <button class="primary-button" id="securityScenarioRunButton" type="button">运行所选验证</button>
+          <button hidden data-srtp-scenario="NORMAL" id="securityProtectButton" type="button" aria-hidden="true" tabindex="-1"></button>
+          <button class="quiet-button" hidden id="securityPcapButton" type="button">导出 PCAP</button>
+        </div>
+      </section>
+    </div>
+    <div class="security-result security-result-summary compact" id="securityResult"><strong>Security Core 尚未检查</strong><span>Core 健康检查用于确认协议实现；端到端结果由所选 UDP 场景单独验证。</span></div>
+    <div class="security-scenario-expectation compact" id="securityScenarioExpectation"><strong>正常链路</strong><span>预期：单包经 SRTP 保护、真实 UDP 传输后被接收端接受。</span></div>
+    <details class="security-selftest-details-v53" id="securitySelfTestDetails" hidden>
+      <summary>查看 Core 健康检查明细</summary>
+      <div class="security-selftest-nav" id="securitySelfTestNav"></div>
+    </details>
+    <div class="security-results v53-security-results">
+      <section class="security-result-column">
+        <div class="security-column-heading"><h3>端到端验证链路</h3><span id="securityPipelineSummary">选择场景后运行</span></div>
+        <div class="security-pipeline" id="securityPipeline">
+          <div class="security-pipeline-empty">运行后显示 RTP 构造 → SRTP 保护 → UDP 传输 → 接收校验。</div>
+        </div>
+      </section>
+      <section class="security-packet-column">
+        <div class="security-column-heading"><h3 id="securityDetailTitle">关键字段</h3><span id="securityDetailHint">点击 Packet 或阶段</span></div>
+        <div id="securityPacketDetail" class="packet-detail security-detail-panel"><div class="security-detail-explain">选择 Packet 或阶段查看字段。</div></div>
+      </section>
+    </div>
+  </section>
+</section>
+<section aria-hidden="true" aria-labelledby="tab-debug" class="view-panel" data-view-panel="debug" id="panel-debug" role="tabpanel">
+  <section class="panel diagnosis-hero">
+    <div class="panel-heading"><div><p class="eyebrow">Diagnosis</p><h2>诊断与运行检查</h2></div><div class="panel-actions"><span class="panel-note" id="diagnosisCode">无故障</span><button class="mini-button" id="runSystemCheckButton" type="button">运行系统检查</button><button class="mini-button" id="runBlindDiagnosisButton" type="button">证据隔离复算</button><button class="mini-button" id="exportDiagnosisButton" type="button">导出诊断</button></div></div>
+    <div class="system-check-summary" id="systemCheckSummary"><strong>运行检查未执行</strong><span>可随时检查状态机、Socket、TaskBus、Timer、网络侧决策与 Security 状态，不要求预先注入故障。</span></div>
+    <div class="system-check-grid" id="systemCheckGrid" hidden></div>
+    <div class="diagnosis-body" id="diagnosisBody">当前没有失败报告。发生异常后，这里只展示根因、失败检查项和必要运行证据；详细参数默认折叠。</div>
+    <div class="runtime-replay" id="runtimeReplay"><div class="diagnosis-empty"><strong>运行链路回放</strong><span>失败后用紧凑链路显示消息经过 Modem、Socket、eNB/MME 与判定点的实际顺序。</span></div></div>
+    <div class="blind-diagnosis-panel" id="blindDiagnosisPanel"><div class="diagnosis-empty"><strong>证据隔离复算</strong><span>失败后可重新计算；后端只使用运行证据，不提供场景名、故障配置或故障注入事件。</span></div></div>
+  </section>
+  <div class="diagnosis-grid">
+    <section class="panel timer-panel">
+      <div class="panel-heading"><div><p class="eyebrow">Timer</p><h2>相关计时器</h2></div><span class="panel-note">只显示标准过程计时器和本次相关工程保护计时器</span></div>
+      <div class="timer-list" id="timerCards"></div>
+    </section>
+    <section class="panel diagnosis-evidence-panel">
+      <div class="panel-heading"><div><p class="eyebrow">Evidence</p><h2>关键证据链</h2></div><div class="panel-actions"><span class="panel-note">仅保留与根因相关的关键事件</span><button class="mini-button" id="showDiagnosisHistoryButton" type="button">诊断历史</button></div></div>
+      <div id="diagnosisEvidence" class="diagnosis-evidence">暂无异常证据</div>
+    </section>
+  </div>
+  <section class="panel log-panel compact-log-panel">
+    <div class="panel-heading log-heading"><div><p class="eyebrow">Logs</p><h2>最近运行日志</h2></div><div class="log-actions"><button class="icon-button" id="pauseLogsButton" type="button">暂停</button><button class="icon-button" id="exportLogsButton" type="button">导出</button><button class="icon-button" id="clearLogsButton" type="button">清空</button></div></div>
+    <div class="log-toolbar"><input id="logSearch" placeholder="搜索 source / message" type="search"><select id="logTypeFilter"><option value="ALL">全部类型</option><option value="AT">AT</option><option value="PRIMITIVE">PRIMITIVE</option><option value="SOCKET">SOCKET</option><option value="ERROR">ERROR</option></select><span class="panel-note" id="logCount">0 条</span></div>
+    <div class="log-table-wrap"><table class="log-table"><thead><tr><th>时间</th><th>源 → 目标</th><th>类型</th><th>消息</th><th>事务</th></tr></thead><tbody id="logTableBody"></tbody></table><div class="empty-logs" id="emptyLogs">暂无日志</div></div>
+  </section>
+</section>
+</main>
+<div class="shortcut-hint" id="shortcutHint">
+      Alt+1~5 切换 · Ctrl+Enter Attach · Alt+0 关闭无线 · / 聚焦 AT
+    </div>
+<div aria-live="polite" class="toast" id="toast" role="status"></div>
+<dialog class="settings-dialog" id="settingsDialog" aria-labelledby="settingsDialogTitle">
+  <section class="settings-dialog-shell">
+    <header class="settings-dialog-header">
+      <div><p class="eyebrow">Preferences</p><h2 id="settingsDialogTitle">设置</h2><p>界面显示和当前运行模式的应用级设置。</p></div>
+      <button class="dialog-close" id="settingsCloseButton" type="button" aria-label="关闭">×</button>
+    </header>
+    <div class="settings-section">
+      <div class="settings-section-title"><div><strong>界面显示</strong><span>只调整本机 Web / EXE 的显示比例，不影响仿真参数。</span></div><output id="settingsScaleValue">110%</output></div>
+      <div class="settings-scale-control" aria-label="页面显示比例">
+        <button id="settingsScaleDown" type="button" aria-label="缩小页面">−</button>
+        <input id="settingsScaleRange" type="range" min="90" max="135" step="5" value="110" aria-label="页面显示比例"/>
+        <button id="settingsScaleUp" type="button" aria-label="放大页面">＋</button>
+        <button class="quiet-button" id="settingsScaleReset" type="button">恢复默认</button>
+      </div>
+    </div>
+    <div class="settings-section settings-storage-section">
+      <div class="settings-section-title"><div><strong>本地运行记录</strong><span>打开主控电脑上的 runs 目录，可手动查看或删除已归档的本地运行记录。</span></div></div>
+      <div class="settings-storage-row"><code id="settingsRunsPath">正在读取…</code><button class="secondary-button" id="settingsOpenRunsButton" type="button">打开 runs 文件夹</button><button class="secondary-button" id="settingsExportRunButton" type="button">导出最近 Run</button></div>
+      <p class="settings-mode-hint" id="settingsRunsHint">远程 LAN 浏览器不会被允许触发主控电脑的文件管理器。</p>
+    </div>
+    <div class="settings-section settings-mode-section">
+      <div class="settings-section-title"><div><strong>当前模式</strong><span>退出模式会结束当前应用会话并返回 Local / LAN 模式选择器。</span></div><span class="settings-mode-badge" id="settingsCurrentMode">--</span></div>
+      <button class="danger-secondary-button" id="settingsExitModeButton" type="button" hidden>退出当前模式</button>
+      <p class="settings-mode-hint" id="settingsModeHint">浏览器 Web 运行时不提供模式退出。</p>
+    </div>
+    <footer class="settings-dialog-actions"><button class="primary-button" id="settingsDoneButton" type="button">完成</button></footer>
+  </section>
+</dialog>
+<dialog class="custom-fault-dialog" id="customFaultDialog" aria-labelledby="customFaultDialogTitle">
+  <form id="customFaultForm" class="custom-fault-form" method="dialog" novalidate>
+    <header>
+      <div><p class="eyebrow">Fault Injection</p><h2 id="customFaultDialogTitle">故障注入配置</h2><p>选择协议阶段、注入层与动作；配置在 Attach 到达对应运行点时由 Fault Injector 执行。</p></div>
+      <button class="dialog-close" id="customFaultCloseButton" type="button" aria-label="关闭">×</button>
+    </header>
+    <div class="fault-builder-primary">
+      <label>注入步骤<select id="faultStageInput"></select></label>
+      <label>注入位置<select id="faultLayerInput"><option value="primitive">原语交付前</option><option value="socket">Socket 发送前</option></select></label>
+      <label>故障动作<select id="faultActionInput"></select></label>
+    </div>
+    <div class="fault-target-strip">
+      <span><b>目标 Task</b><strong id="faultTaskDisplay">--</strong></span>
+      <span><b>Primitive / Message</b><strong id="faultPrimitiveDisplay">--</strong></span>
+      <input id="faultTaskInput" type="hidden"/>
+      <input id="faultPrimitiveInput" type="hidden"/>
+    </div>
+    <div class="fault-capability-note" id="faultCapabilityNote">
+      仅允许修改所选 Primitive / Socket 消息中已定义的字段；支持白名单内嵌套路径，字段类型由后端契约校验。
+    </div>
+    <div class="fault-modify-workspace" id="faultModifyWorkspace">
+      <section class="fault-field-browser" id="faultFieldBrowser">
+        <div class="fault-section-heading"><strong>可修改字段</strong><span id="faultFieldCount">0 项</span></div>
+        <div class="fault-field-suggestions" id="faultFieldSuggestions" aria-label="当前消息支持修改的字段"></div>
+      </section>
+      <section class="fault-value-editor">
+        <label id="faultFieldGroup">字段路径
+          <input id="faultFieldInput" autocomplete="off" spellcheck="false" placeholder="可直接输入，例如 sib.plmn"/>
+        </label>
+        <div class="fault-field-meta" id="faultFieldMeta">选择左侧字段后，这里会说明字段含义、类型和当前原值。</div>
+        <label id="faultValueGroup">注入值
+          <input id="faultMessageInput" maxlength="160" value="REJECT"/>
+          <small id="faultValueHint">字符串直接输入文字，不需要加引号；数字填 42，布尔值填 true / false。</small>
+        </label>
+        <div class="fault-value-choices" id="faultValueChoices"></div>
+      </section>
+    </div>
+    <div class="fault-timing-workspace" id="faultTimingWorkspace" hidden>
+      <label id="faultDelayGroup" hidden>延迟时长（ms）<input id="faultDelayInput" max="10000" min="1" type="number" value="100"/></label>
+      <label id="faultTimeoutGroup" hidden>等待上限（ms）<input id="faultTimeoutInput" max="4000" min="50" type="number" value="1000"/></label>
+      <p id="faultTimingHint">该动作不修改消息字段，只影响真实交付/等待时序。</p>
+    </div>
+    <div class="fault-preview" id="faultConfigPreview">选择动作后，这里会说明实际注入位置、执行动作和运行观察点。</div>
+    <div class="inline-error" hidden id="customFaultError" role="alert" tabindex="-1"></div>
+    <footer><button class="quiet-button" id="customFaultDisableButton" type="button">恢复正常网络</button><span></span><button class="secondary-button" id="customFaultCancelButton" type="button">取消</button><button class="primary-button" id="customFaultApplyButton" type="submit">应用并启用</button></footer>
+  </form>
+</dialog>
+<dialog aria-labelledby="faultTitle" class="fault-dialog" id="faultDialog">
+<div class="fault-dialog-shell">
+<header class="fault-dialog-header">
+<div>
+<span class="fault-severity" id="faultSeverity">ERROR</span>
+<h2 id="faultTitle">仿真异常</h2>
+</div>
+<button aria-label="关闭" class="fault-close" id="faultCloseButton" type="button">
+            ×
+          </button>
+</header>
+<section class="fault-summary-block">
+<p id="faultSummary"></p>
+<p class="fault-scenario-note" id="faultScenarioNote"></p>
+</section>
+<section class="fault-injection-parameters" id="faultInjectionParameters">
+  <div class="fault-param-heading"><strong>本次故障注入参数</strong><span>FaultConfig / Runtime Evidence</span></div>
+  <dl id="faultInjectionFacts"></dl>
+</section>
+<div class="fault-grid">
+<section>
+<h3>影响</h3>
+<p id="faultImpact"></p>
+</section>
+<section>
+<h3>可能原因</h3>
+<ul id="faultCauses"></ul>
+</section>
+<section>
+<h3>检查结论</h3>
+<ol id="faultChecks"></ol>
+</section>
+<section>
+<h3>下一步操作</h3>
+<ol id="faultSuggestions"></ol>
+</section>
+</div>
+<pre id="faultTechnical" class="fault-technical-data" hidden></pre>
+<footer class="fault-dialog-actions">
+<button class="secondary-button" id="faultCopyButton" type="button">
+            复制诊断
+          </button>
+<button class="secondary-button" id="faultTargetButton" type="button">
+            定位相关页面
+          </button>
+<button class="primary-button" id="faultDebugButton" type="button">
+            查看诊断
+          </button>
+</footer>
+</div>
+</dialog>
+<dialog aria-labelledby="infoDialogTitle" class="info-dialog" id="infoDialog">
+  <div class="info-dialog-shell">
+    <header class="info-dialog-header">
+      <div><p class="eyebrow" id="infoDialogEyebrow">说明</p><h2 id="infoDialogTitle">信息</h2><p id="infoDialogIntro"></p></div>
+      <button aria-label="关闭" class="dialog-close" id="infoDialogCloseButton" type="button">×</button>
+    </header>
+    <section class="info-dialog-body" id="infoDialogBody"></section>
+    <footer class="info-dialog-actions"><button class="primary-button" id="infoDialogConfirmButton" type="button">关闭</button></footer>
+  </div>
+</dialog>
+<script src="/app.js"></script>
+</body>
+</html>

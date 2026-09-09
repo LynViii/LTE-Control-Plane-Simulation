@@ -1,0 +1,27 @@
+Python 3.13.9
+cryptography==46.0.3 | license=Apache-2.0 OR BSD-3-Clause | copied_license_files=3
+jsonschema==4.25.0 | license=MIT | copied_license_files=1
+PyYAML==6.0.3 | license=MIT | copied_license_files=1
+cffi==2.0.0 | license=MIT | copied_license_files=1
+pywebview==5.4 | license=BSD 3-Clause License  Copyright (c) 2014-2017, Roman Sirokov All rights reserved.  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:  * Redistributions of source code must retain the above copyright notice, this   list of conditions and the following disclaimer.  * Redistributions in binary form must reproduce the above copyright notice,   this list of conditions and the following disclaimer in the documentation   and/or other materials provided with the distribution.  * Neither the name of the copyright holder nor the names of its   contributors may be used to endorse or promote products derived from   this software without specific prior written permission.  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. | copied_license_files=1
+PyInstaller==6.21.0 | license=GPLv2-or-later with a special exception which allows to use PyInstaller to build and distribute non-free programs (including commercial ones) | copied_license_files=1
+attrs==25.4.0 | license=MIT | copied_license_files=1
+jsonschema-specifications==2025.9.1 | license=MIT | copied_license_files=1
+referencing==0.37.0 | license=MIT | copied_license_files=1
+rpds-py==0.28.0 | license=MIT | copied_license_files=1
+pycparser==2.23 | license=BSD-3-Clause | copied_license_files=1
+proxy-tools==0.1.0 | license=MIT | copied_license_files=0
+typing_extensions==4.15.0 | license=PSF-2.0 | copied_license_files=1
+pythonnet==3.1.0 | license=MIT | copied_license_files=1
+clr-loader==0.3.1 | license=unspecified | copied_license_files=1
+altgraph==0.17.5 | license=MIT | copied_license_files=1
+pefile==2024.8.26 | license=MIT | copied_license_files=1
+pywin32-ctypes==0.2.2 | license=BSD-3-Clause | copied_license_files=0
+packaging==25.0 | license=unspecified | copied_license_files=3
+setuptools==80.9.0 | license=MIT | copied_license_files=23
+Pillow==12.0.0 | license=MIT-CMU | copied_license_files=1
+pyinstaller-hooks-contrib==2026.6 | license=unspecified | copied_license_files=1
+OpenSSL native license files copied=1
+Tcl native license files copied=1
+Tk native license files copied=1
+CPython license copied=True
