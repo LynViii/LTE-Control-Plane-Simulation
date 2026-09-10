@@ -1,37 +1,27 @@
-# devtools — 可整体删除的开发 / 验收工具
+# 开发工具
 
-`devtools/` **不属于仿真平台运行时依赖**。它只保存开发期测试、源包验收、Windows 发布 Smoke Test 和历史验收记录。
+`tests/` 保存 pytest 测试，`validation/` 保存项目自检、源码包校验和 Windows 发布检查脚本。仿真程序运行时不导入这些工具。只运行仿真程序时，`devtools/` 可整体删除；删除后不再执行开发和发布检查。
 
-目录：
-
-```text
-devtools/
-├── tests/        pytest 回归测试
-├── validation/   self_test / source ZIP / Windows release 检查
-└── archive/      历史 validation 记录
-```
-
-如果代码已经验收完成、后续只想保留源码运行或自己构建 EXE，可以直接删除整个 `devtools/`。
-
-删除后仍可使用：
-
-- `python -m lte_sim.web_app`
-- `scripts/windows/run-web.ps1`
-- `scripts/windows/build-exe.ps1`（Windows EXE 构建入口）
-- Local / LAN Attach
-- Fault Injection / Trace / Diagnosis
-- Security Core / SRTP UDP
-
-区别只有：`scripts/windows/build-exe.ps1` 找不到 `devtools/validation/smoke-release.ps1` 时会跳过发布后的自动 Smoke Test，并给出 Warning；不会阻止 EXE 构建。
-
-如果希望直接生成不包含该目录的源码包：
+安装测试依赖：
 
 ```powershell
-python .\scripts\build\package-source.py --without-devtools
+python -m pip install -e ".[dev]"
 ```
 
-完整开发源码包仍可执行：
+不依赖本地交付文档的核心测试：
 
 ```powershell
-python .\scripts\build\package-source.py
+python -m pytest -q devtools/tests/test_core.py devtools/tests/test_security_core.py devtools/tests/test_srtp_udp.py
 ```
+
+完整测试中的部分用例会检查 `docs/`、文档文字和完整交付结构。这个目录没有上传到 GitHub；运行全量测试或 `validation/self_test.py` 前需要本地交付包。历史测试名称中的版本号表示用例最初加入的版本。
+
+`validation/verify-source-package.py` 用来校验源码 ZIP 的文件清单和哈希，并在解压目录运行自检。打包入口是：
+
+```powershell
+python scripts/build/package-source.py
+```
+
+传入 `--without-devtools` 可生成不含测试工具的源码包。Windows 构建脚本检测到 `validation/smoke-release.ps1` 时会执行发布检查；缺少它时会跳过该检查。
+
+历史验收记录保存在本地的 `archive/`，不随本仓库上传。

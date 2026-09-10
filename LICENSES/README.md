@@ -1,7 +1,7 @@
-# Release license bundle
+# 第三方许可证
 
-此目录中的固定文本用于核对当前 v5.4.0 运行与 Windows 构建相关的第三方许可边界，重点包括 cryptography/OpenSSL、pywebview、PyInstaller 及其间接依赖。当前运行路径不包含 pylibsrtp / 完整 libSRTP engine。
+本目录保存运行与 Windows 构建依赖的许可证副本，以及收集时生成的 `dependency-inventory.txt`。具体版本以清单为准。
 
-Windows 正式发布时，`scripts/build/collect-third-party-licenses.py` 还会从**实际构建环境**的已安装 distribution 中复制运行时依赖的 LICENSE/COPYING/NOTICE，并生成 `dependency-inventory.txt`。`scripts/windows/build-exe.ps1` 在压缩 release 前会执行该步骤；若关键依赖缺失则构建失败，避免只在源码仓库里保留声明而 release 漏掉许可证。
+发布时，`scripts/build/collect-third-party-licenses.py` 会从构建环境已安装的 Python 分发包中收集 LICENSE、COPYING 和 NOTICE。`scripts/windows/build-exe.ps1` 在生成发布 ZIP 前执行这一步，并将收集结果放入发布包。
 
-- `proxy_tools-BSD.txt`：pywebview 传递依赖 proxy_tools 0.1.0 的上游 LICENSE。
+SRTP 的协议代码位于 `src/lte_sim/security_engine/`；AES、HMAC 运算使用 `cryptography/OpenSSL`。`pylibsrtp` 仅用于可选的开发期对照测试。
