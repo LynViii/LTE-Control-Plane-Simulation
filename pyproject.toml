@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lte-control-plane-sim"
-version = "6.0.3"
+version = "6.0.4"
 description = "LTE control-plane Attach engineering simulator with Web UI and packaged Windows EXE"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -33,7 +33,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-lte_sim = ["web/*"]
+lte_sim = ["web/*", "scenarios/*.yaml", "scenarios/schema/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

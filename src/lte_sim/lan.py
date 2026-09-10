@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import hmac
 import json
 import socket
@@ -275,13 +276,122 @@ def _compact_management_value(value):
     return out
 
 
-def management_state_snapshot(state: dict) -> dict:
-    """Return a bounded LAN controller mirror payload.
 
-    The management channel intentionally stays below the protocol frame limit.
-    The Agent keeps the full local trace/run archive; the Controller receives a
-    recent live window plus compact nested decision summaries.  This prevents
-    richer Diagnosis metadata from turning normal Attach into a 256 KiB+ frame.
+def _json_size(value) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8"))
+
+
+def _stream_digest(rows: list[dict]) -> str:
+    payload = json.dumps(rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _transaction_rows(state: dict, stream: str, transaction_id: str) -> list[dict]:
+    allowed = {"runtimeEvents", "taskEvents", "faultEvidence", "protocolTrace", "packetTrace", "logs"}
+    if stream not in allowed:
+        raise ValueError(f"unsupported evidence stream: {stream}")
+    rows = state.get(stream, []) or []
+    if not isinstance(rows, list):
+        return []
+    tx = str(transaction_id or "")
+    if not tx:
+        return copy.deepcopy(rows)
+    filtered = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_tx = row.get("transactionId")
+        # Some older protocolTrace rows use the snake-case field.
+        if row_tx is None:
+            row_tx = row.get("transaction_id")
+        if str(row_tx or "") == tx:
+            filtered.append(copy.deepcopy(row))
+    return filtered
+
+
+def management_evidence_page(state: dict, *, transaction_id: str, stream: str, cursor: int = 0, limit: int = 48) -> dict:
+    """Return one bounded page of full-fidelity transaction evidence.
+
+    Live dashboard snapshots stay compact.  Terminal archiving uses this page
+    API to pull the complete transaction stream and verify a digest before the
+    Controller writes its formal run archive.
+    """
+    rows = _transaction_rows(state, stream, transaction_id)
+    cursor = max(0, int(cursor or 0))
+    limit = min(96, max(1, int(limit or 48)))
+    end = min(len(rows), cursor + limit)
+    items = rows[cursor:end]
+    # Keep each management response comfortably below receive_json_line()'s
+    # 256 KiB ceiling.  Normal events are far smaller; adaptively reduce only
+    # for unusually rich evidence rows.
+    max_response = 220 * 1024
+    while items and _json_size({"items": items}) > max_response and len(items) > 1:
+        items = items[: max(1, len(items) // 2)]
+        end = cursor + len(items)
+    if items and _json_size({"items": items}) > max_response:
+        raise ValueError(f"{stream} contains a single record too large for management transfer")
+    return {
+        "transactionId": str(transaction_id),
+        "stream": stream,
+        "cursor": cursor,
+        "nextCursor": end if end < len(rows) else None,
+        "total": len(rows),
+        "items": items,
+        "digest": _stream_digest(rows),
+    }
+
+
+def _compact_diagnosis_for_management(value):
+    if not isinstance(value, dict):
+        return {}
+    out = {}
+    for key in ("systemCheck",):
+        if key in value:
+            out[key] = _compact_management_value(value.get(key))
+    for key in ("lastReport", "blindReport"):
+        report = value.get(key)
+        if not isinstance(report, dict):
+            continue
+        keep = {
+            name: copy.deepcopy(report.get(name))
+            for name in (
+                "id", "time", "transactionId", "failedStep", "code", "root_cause",
+                "title", "summary", "diagnosticVerdict", "diagnosis_mode", "blind",
+                "scenarioNote", "diagnosisInput", "network_decision", "parameter_delta",
+                "timer_evidence", "actions", "checks",
+            )
+            if report.get(name) is not None
+        }
+        # nested decision evidence can be large; live Runtime Events carry the
+        # detailed checks and terminal paging retrieves full evidence separately.
+        if isinstance(keep.get("network_decision"), dict):
+            keep["network_decision"] = _compact_management_value(keep["network_decision"])
+        out[key] = keep
+    history = value.get("history")
+    if isinstance(history, list):
+        out["history"] = [
+            {k: copy.deepcopy(item.get(k)) for k in ("id", "time", "transactionId", "failedStep", "code", "title") if item.get(k) is not None}
+            for item in history[-12:] if isinstance(item, dict)
+        ]
+    return out
+
+
+def _truncate_management_strings(value, max_chars: int):
+    if isinstance(value, list):
+        return [_truncate_management_strings(item, max_chars) for item in value]
+    if isinstance(value, dict):
+        return {key: _truncate_management_strings(item, max_chars) for key, item in value.items()}
+    if isinstance(value, str) and len(value) > max_chars:
+        return value[:max_chars] + "…[truncated]"
+    return value
+
+
+def management_state_snapshot(state: dict) -> dict:
+    """Return a bounded live LAN mirror payload.
+
+    The dashboard receives a recent window only.  v6.0.4 separately transfers
+    full transaction evidence at terminal state, so this live snapshot can stay
+    small without weakening archived evidence.
     """
     direct_keys = (
         "modem", "scenario", "customFault", "flow", "runtime", "taskRuntime",
@@ -300,32 +410,63 @@ def management_state_snapshot(state: dict) -> dict:
     }
     for key, limit in bounded.items():
         if key in state:
-            result[key] = _compact_management_value(state.get(key, [])[-limit:])
-    # Keep the two protocol-socket peer facts even when richer runtime evidence
-    # pushes their original log rows outside the rolling management window.
+            result[key] = _compact_management_value((state.get(key) or [])[-limit:])
+
     if "logs" in state:
         peer_messages = {"AP-Modem socket connected", "Modem-eNB socket connected"}
         retained = [row for row in state.get("logs", []) if row.get("message") in peer_messages]
-        merged = {row.get("id"): row for row in (result.get("logs", []) + _compact_management_value(retained)) if row.get("id")}
+        merged = {
+            row.get("id"): row
+            for row in (result.get("logs", []) + _compact_management_value(retained))
+            if isinstance(row, dict) and row.get("id")
+        }
         result["logs"] = sorted(merged.values(), key=lambda row: row.get("time") or "")[-56:]
-    # primitiveTrace duplicates taskEvents for the current Web view and is
-    # deliberately omitted from the management mirror.
 
-    # Future metadata additions must not silently break LAN again.  Keep a
-    # conservative safety margin below receive_json_line()'s 256 KiB maximum by
-    # progressively dropping the oldest live rows while retaining current facts.
     target_bytes = 192 * 1024
-    shrink_order = ("taskEvents", "runtimeEvents", "protocolTrace", "packetTrace")
-    while len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > target_bytes:
+    shrink_order = ("taskEvents", "runtimeEvents", "protocolTrace", "packetTrace", "faultEvidence", "logs", "atHistory")
+    while _json_size(result) > target_bytes:
         changed = False
         for key in shrink_order:
             rows = result.get(key)
-            if isinstance(rows, list) and len(rows) > 12:
+            if isinstance(rows, list) and len(rows) > 8:
                 drop = max(1, len(rows) // 4)
                 result[key] = rows[drop:]
                 changed = True
         if not changed:
             break
+
+    if _json_size(result) > target_bytes:
+        result["diagnosis"] = _compact_diagnosis_for_management(state.get("diagnosis", {}))
+    if _json_size(result) > target_bytes:
+        for key in shrink_order:
+            rows = result.get(key)
+            if isinstance(rows, list):
+                result[key] = rows[-8:]
+    if _json_size(result) > target_bytes:
+        result = _truncate_management_strings(result, 1024)
+    if _json_size(result) > target_bytes:
+        result = _truncate_management_strings(result, 256)
+
+    # Absolute safety fallback. Keep current control facts and mark the live
+    # snapshot as reduced; the full terminal evidence path remains available.
+    if _json_size(result) > target_bytes:
+        essential = {
+            key: result.get(key)
+            for key in (
+                "modem", "scenario", "flow", "runtime", "taskRuntime", "faultConfig",
+                "traceSummary", "diagnosis", "transportMetrics", "metrics",
+                "security", "sockets", "runArchive",
+            )
+            if key in result
+        }
+        for key in ("runtimeEvents", "taskEvents", "faultEvidence", "logs"):
+            if key in result:
+                essential[key] = (result.get(key) or [])[-4:]
+        essential["managementSnapshotReduced"] = True
+        result = _truncate_management_strings(essential, 160)
+
+    if _json_size(result) >= 256 * 1024:
+        raise RuntimeError("management snapshot exceeded frame safety limit")
     return result
 
 
@@ -357,6 +498,16 @@ def make_management_handler(
                             "modem": result["state"].get("modem", {}),
                             "sockets": result["state"].get("sockets", {}),
                         }
+                elif operation == "evidence-page":
+                    snap = store.snapshot()
+                    page = management_evidence_page(
+                        snap,
+                        transaction_id=str(payload.get("transactionId") or ""),
+                        stream=str(payload.get("stream") or ""),
+                        cursor=int(payload.get("cursor") or 0),
+                        limit=int(payload.get("limit") or 48),
+                    )
+                    result = {"ok": True, "page": page, "heartbeatAt": _utc()}
                 elif operation == "probe-controller":
                     if settings is None:
                         raise RuntimeError("agent settings unavailable for reverse-path probe")
@@ -618,6 +769,7 @@ class RemoteStateMirror:
         self._last_terminal: str | None = None
         self._online = False
         self._reported_offline = False
+        self._last_archive_error: str | None = None
 
     def start(self):
         self._thread = threading.Thread(target=self._loop, name="Remote Modem State Mirror", daemon=True)
@@ -627,6 +779,68 @@ class RemoteStateMirror:
         self._stop.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2)
+
+    def _fetch_complete_stream(self, transaction_id: str, stream: str) -> tuple[list[dict], dict]:
+        cursor = 0
+        rows: list[dict] = []
+        expected_total = None
+        expected_digest = None
+        pages = 0
+        while True:
+            result = self.client.call(
+                "evidence-page",
+                {"transactionId": transaction_id, "stream": stream, "cursor": cursor, "limit": 48},
+            )
+            page = result.get("page") or {}
+            if str(page.get("transactionId") or "") != str(transaction_id):
+                raise RuntimeError(f"LAN evidence transaction mismatch for {stream}")
+            if page.get("stream") != stream:
+                raise RuntimeError(f"LAN evidence stream mismatch: expected {stream}")
+            items = page.get("items") or []
+            if not isinstance(items, list):
+                raise RuntimeError(f"LAN evidence page is invalid for {stream}")
+            rows.extend(copy.deepcopy(items))
+            pages += 1
+            if expected_total is None:
+                expected_total = int(page.get("total") or 0)
+                expected_digest = str(page.get("digest") or "")
+            elif int(page.get("total") or 0) != expected_total or str(page.get("digest") or "") != expected_digest:
+                raise RuntimeError(f"LAN evidence changed during terminal transfer: {stream}")
+            next_cursor = page.get("nextCursor")
+            if next_cursor is None:
+                break
+            next_cursor = int(next_cursor)
+            if next_cursor <= cursor:
+                raise RuntimeError(f"LAN evidence cursor did not advance: {stream}")
+            cursor = next_cursor
+            if pages > 1000:
+                raise RuntimeError(f"LAN evidence paging exceeded safety limit: {stream}")
+        actual_digest = _stream_digest(rows)
+        if len(rows) != int(expected_total or 0) or actual_digest != expected_digest:
+            raise RuntimeError(
+                f"LAN evidence verification failed for {stream}: "
+                f"count {len(rows)}/{expected_total}, digest {actual_digest}/{expected_digest}"
+            )
+        return rows, {
+            "stream": stream,
+            "count": len(rows),
+            "digest": actual_digest,
+            "pages": pages,
+        }
+
+    def _fetch_terminal_evidence(self, remote: dict, transaction_id: str) -> tuple[dict, dict]:
+        complete = copy.deepcopy(remote)
+        transfer = {
+            "status": "VERIFIED",
+            "transactionId": transaction_id,
+            "completedAt": _utc(),
+            "streams": {},
+        }
+        for stream in ("runtimeEvents", "taskEvents", "faultEvidence", "protocolTrace", "packetTrace", "logs"):
+            rows, meta = self._fetch_complete_stream(transaction_id, stream)
+            complete[stream] = rows
+            transfer["streams"][stream] = meta
+        return complete, transfer
 
     def _loop(self):
         while not self._stop.wait(0.22):
@@ -679,9 +893,60 @@ class RemoteStateMirror:
                 flow = remote.get("flow", {})
                 tx_id = flow.get("transactionId")
                 if tx_id and not flow.get("running") and tx_id != self._last_terminal:
-                    self._last_terminal = tx_id
-                    if self.on_terminal and snapshot:
-                        self.on_terminal(snapshot)
+                    try:
+                        terminal_remote, transfer = self._fetch_terminal_evidence(remote, str(tx_id))
+
+                        def merge_terminal(local):
+                            for key in ("runtimeEvents", "taskEvents", "faultEvidence", "protocolTrace", "packetTrace"):
+                                local[key] = copy.deepcopy(terminal_remote.get(key, []))
+                            combined_logs = {
+                                item.get("id"): item
+                                for item in local.get("logs", [])
+                                if isinstance(item, dict) and item.get("id")
+                            }
+                            combined_logs.update({
+                                item.get("id"): item
+                                for item in terminal_remote.get("logs", [])
+                                if isinstance(item, dict) and item.get("id")
+                            })
+                            local["logs"] = sorted(
+                                combined_logs.values(), key=lambda item: item.get("time") or ""
+                            )[-self.store.max_logs :]
+                            local.setdefault("lan", {})["archiveTransfer"] = copy.deepcopy(transfer)
+
+                        terminal_snapshot = self.store.mutate(merge_terminal, return_snapshot=True)
+                        archive_result = self.on_terminal(terminal_snapshot) if self.on_terminal and terminal_snapshot else None
+                        self._last_terminal = str(tx_id)
+                        self._last_archive_error = None
+
+                        def mark_archived(local):
+                            status = local.setdefault("lan", {}).setdefault("archiveTransfer", {})
+                            status["status"] = "ARCHIVED"
+                            if isinstance(archive_result, dict):
+                                status["runId"] = archive_result.get("runId")
+                                status["runDir"] = archive_result.get("runDir")
+                        self.store.mutate(mark_archived)
+                    except Exception as archive_exc:
+                        # A failed archive must remain retryable on the next poll.
+                        # Do not mark the Agent offline: protocol management itself
+                        # may still be healthy.
+                        message = str(archive_exc)
+                        def mark_retry(local):
+                            local.setdefault("lan", {})["archiveTransfer"] = {
+                                "status": "RETRY_PENDING",
+                                "transactionId": str(tx_id),
+                                "lastError": message,
+                                "updatedAt": _utc(),
+                            }
+                        self.store.mutate(mark_retry)
+                        if message != self._last_archive_error:
+                            self.store.log(
+                                "LAN Archive", "Controller", "ARCHIVE_RETRY",
+                                f"完整运行档案同步失败，将重试：{message}",
+                                {"transactionId": str(tx_id)},
+                                str(tx_id),
+                            )
+                            self._last_archive_error = message
             except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
                 if self._online or not self._reported_offline:
                     self.store.set_socket_status("apModem", "OFFLINE")

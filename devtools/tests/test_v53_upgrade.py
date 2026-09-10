@@ -39,9 +39,9 @@ def wait_finished(store: StateStore, timeout: float = 5.0):
 
 
 def test_v53_version_and_root_are_compact():
-    assert read("VERSION").strip() == "6.0.3"
-    assert 'version = "6.0.3"' in read("pyproject.toml")
-    assert 'FileVersion\', \'6.0.3' in read("packaging/version-info.txt")
+    assert read("VERSION").strip() == "6.0.4"
+    assert 'version = "6.0.4"' in read("pyproject.toml")
+    assert 'FileVersion\', \'6.0.4' in read("packaging/version-info.txt")
     assert (ROOT / "scripts/windows/build-exe.ps1").is_file()
     assert not (ROOT / "build-exe.cmd").exists()
     assert not (ROOT / "scripts/build-embedded.ps1").exists()
@@ -65,7 +65,7 @@ def test_v53_docs_are_consolidated_and_chinese_named():
     assert actual == expected
     assert {"Security独立Demo.md", "流程图提示词.md", "完整更新记录.md", "README.md"}.issubset({p.name for p in (ROOT / "docs/reference").glob("*.md")})
     assert not (ROOT / "docs/delivery").exists()
-    assert "v6.0.3" in read("docs/README.md")
+    assert "v6.0.4" in read("docs/README.md")
     assert "第一次接触项目" in read("docs/README-说明书.md")
 
 

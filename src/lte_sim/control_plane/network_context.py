@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -63,6 +64,28 @@ class NetworkControlPlaneContext:
 
     def _key(self, request: dict) -> str:
         return str(request.get("transactionId") or "LEGACY")
+
+
+    @contextmanager
+    def locked(self, request: dict):
+        """Yield one transaction context while holding the store lock.
+
+        v6.0.4 uses this around the complete check/transition/response cycle so
+        concurrent messages cannot observe half-updated context state.
+        """
+        key = self._key(request)
+        with self._lock:
+            ctx = self._transactions.get(key)
+            if ctx is None:
+                ctx = _TransactionContext(transaction_id=key, ue_id=str(request.get("ueId") or "UE-001"))
+                self._transactions[key] = ctx
+                self._order.append(key)
+                while len(self._order) > self.max_transactions:
+                    old = self._order.pop(0)
+                    self._transactions.pop(old, None)
+            ctx.last_message = str(request.get("type") or "UNKNOWN")
+            ctx.message_count += 1
+            yield ctx
 
     def get(self, request: dict) -> _TransactionContext:
         key = self._key(request)

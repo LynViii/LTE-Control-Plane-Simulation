@@ -1,6 +1,6 @@
 # LTE 控制面仿真
 
-用 Python 模拟 LTE 终端的 Attach 流程，观察消息在 AP、Modem 和 eNB/MME 之间如何传递，以及流程在哪一步出错。当前版本为 v6.0.3。
+用 Python 模拟 LTE 终端的 Attach 流程，观察消息在 AP、Modem 和 eNB/MME 之间如何传递，以及流程在哪一步出错。当前版本为 v6.0.4。
 
 AP 通过 AT 指令控制 Modem。Modem 内部有 NAS、RRC、L2、L1 四个工作线程，通过队列传递原语；AP–Modem 和 Modem–eNB/MME 使用 TCP 通信。浏览器页面可以查看流程状态、消息记录、计时器和故障诊断，也可以修改消息字段、延迟或丢弃消息，观察后续响应。
 
@@ -78,19 +78,21 @@ UDP 实验在主控电脑本机收发。它与 Attach 中的 NAS Security Mode �
 
 ## 测试
 
-下面这组核心测试可在仓库内直接运行：
+源码仓库/CI 使用不依赖交付文档的独立入口：
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q devtools/tests/test_core.py devtools/tests/test_security_core.py devtools/tests/test_srtp_udp.py
+.\.venv\Scripts\python.exe devtools/validation/source_self_test.py
 ```
 
-安装 Node.js 后，可以检查前端语法：
+它会执行核心运行回归，并实际构建 wheel、安装到隔离目录，从项目目录外加载 package-local `scenarios/`，用于验证“新 clone / wheel 安装”是否完整。
+
+准备正式交付包时再运行更严格的完整自检：
 
 ```powershell
-node --check src/lte_sim/web/app.js
+.\.venv\Scripts\python.exe devtools/validation/self_test.py
 ```
 
-完整测试还包含交付文档检查，需要本地的 `docs/`。该目录、历史验收记录和编译产物没有提交到此仓库。
+该入口额外检查 `docs/`、前端/API 契约、流程图和全部回归测试。两类自检职责分开，避免源码运行问题与本地交付材料缺失混在一起。 v6.0.4 封包前全量回归为 **394 / 394 PASS**。
 
 ## Windows 和双机运行
 

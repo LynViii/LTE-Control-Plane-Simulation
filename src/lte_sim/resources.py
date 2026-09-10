@@ -23,7 +23,21 @@ def web_root() -> Path:
 
 
 def scenarios_root() -> Path:
-    return resource_root() / "scenarios"
+    """Return scenario resources in source, wheel, or PyInstaller layouts.
+
+    v6.0.4 ships a package-local copy so an installed wheel can load scenarios
+    from outside the project directory. PyInstaller keeps its historical
+    top-level ``scenarios/`` data layout, which remains preferred in _MEIPASS.
+    """
+    root = resource_root()
+    if getattr(sys, "_MEIPASS", None):
+        bundled = root / "scenarios"
+        if bundled.is_dir():
+            return bundled
+    packaged = package_root() / "scenarios"
+    if packaged.is_dir():
+        return packaged
+    return root / "scenarios"
 
 
 def scenario_schema_path() -> Path:

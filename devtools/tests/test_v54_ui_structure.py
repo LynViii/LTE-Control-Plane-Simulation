@@ -6,7 +6,7 @@ def read(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
 
 def test_v54_version_and_script_layout():
-    assert read("VERSION").strip() == "6.0.3"
+    assert read("VERSION").strip() == "6.0.4"
     assert not list(ROOT.glob("*.ps1"))
     assert not list(ROOT.glob("*.py"))
     assert not list(ROOT.glob("*.cmd"))

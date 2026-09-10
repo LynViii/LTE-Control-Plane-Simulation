@@ -23,6 +23,7 @@ _ROOT_META = {
     "SOCKET_DROP": ("TRANSPORT", "Socket 消息被丢弃", "检查故障注入、连接状态和发送路径。"),
     "SOCKET_TIMEOUT": ("TRANSPORT", "Socket 请求超时", "检查对端监听、网络、防火墙、端口和响应耗时。"),
     "SOCKET_ERROR": ("TRANSPORT", "Socket 通信错误", "检查连接状态、对端进程、端口和系统错误信息。"),
+    "INSUFFICIENT_EVIDENCE": ("EVIDENCE", "证据不足，暂不能确定根因", "补充同一 transaction 的 Primitive、Socket、Timer 或网络侧判定证据后重新诊断。"),
 }
 
 _DECISIVE_EVENTS = {
@@ -167,7 +168,15 @@ class FailureDiagnosisEngine:
         # ``scenario`` is retained only for API compatibility. It is never read.
         # Blind mode additionally removes FAULT_INJECTED evidence, so the engine
         # sees only observations produced by runtime execution/consumption.
-        raw_events = [e for e in recent_trace if e.get("transactionId") == transaction_id]
+        indexed_events = [
+            (index, e) for index, e in enumerate(recent_trace)
+            if e.get("transactionId") == transaction_id
+        ]
+        # Runtime recorders are normally ordered, but LAN paging/import and
+        # synthetic tests may deliver rows out of order.  ISO timestamps sort
+        # lexicographically; the original index remains a stable tie-breaker.
+        indexed_events.sort(key=lambda item: (str(item[1].get("time") or ""), item[0]))
+        raw_events = [e for _, e in indexed_events]
         excluded_fault_events = sum(1 for e in raw_events if e.get("event") == "FAULT_INJECTED") if blind else 0
         events = [e for e in raw_events if not (blind and e.get("event") == "FAULT_INJECTED")]
         decisive_candidates = [e for e in events if e.get("event") in _DECISIVE_EVENTS or e.get("root_cause")]
@@ -185,7 +194,7 @@ class FailureDiagnosisEngine:
         network_decision = next((e for e in reversed(related) if e.get("event") in decision_events), None)
 
         cause = validation or socket_drop or socket_timeout or decisive
-        root = cause.get("root_cause") or cause.get("event") or "UNCLASSIFIED_CONTROL_PLANE_FAILURE"
+        root = cause.get("root_cause") or cause.get("event") or "INSUFFICIENT_EVIDENCE"
 
         if socket_drop:
             root, cause = "SOCKET_DROP", socket_drop
@@ -366,20 +375,39 @@ class FailureDiagnosisEngine:
         }
         runtime_replay = [_compact_event(e) for e in related if e.get("event") in replay_types][-18:]
         diagnostic_verdict = (network_decision or {}).get("rejectCause") if (network_decision or {}).get("decision") == "REJECT" else None
-        diagnostic_verdict = diagnostic_verdict or root
+        diagnostic_verdict = diagnostic_verdict or (None if root == "INSUFFICIENT_EVIDENCE" else root)
         evidence_fingerprint_source = [_compact_event(e) for e in events]
         evidence_digest = hashlib.sha256(
             json.dumps(evidence_fingerprint_source, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
         ).hexdigest().upper()
+        injection_events = [e for e in events if e.get("event") == "FAULT_INJECTED"]
+        network_events = [e for e in events if e.get("event") in {
+            "NETWORK_AUTH_DECISION", "NETWORK_CONTROL_DECISION", "UE_SYSTEM_INFO_DECISION",
+            "CONTROL_PLANE_DELIVERY_DECISION", "NETWORK_CONTEXT_READ",
+            "NETWORK_STATE_TRANSITION", "NETWORK_REJECT_GENERATED", "NETWORK_RESPONSE_GENERATED",
+        }]
+        observed_events = [e for e in events if e.get("event") != "FAULT_INJECTED"]
+        verdict_status = "INSUFFICIENT_EVIDENCE" if root == "INSUFFICIENT_EVIDENCE" else "DETERMINED"
         diagnosis_input = {
             "mode": "RUNTIME_EVIDENCE_ONLY" if blind else "RUNTIME_EVIDENCE",
+            "evidencePolicy": "BLIND_RUNTIME_FACTS_ONLY" if blind else "STANDARD_RUNTIME_WITH_INJECTION_EVIDENCE",
             "scenarioProvided": False,
             "faultConfigProvided": False,
             "faultInjectedEventsExcluded": bool(blind),
+            "usesFaultInjectionEvidence": bool(injection_events),
+            "usesScenario": False,
+            "usesFaultConfig": False,
             "eventCount": len(events),
             "rawEventCount": len(raw_events),
             "excludedFaultEventCount": excluded_fault_events,
             "evidenceDigest": evidence_digest,
+            "verdictStatus": verdict_status,
+            "inputLayers": {
+                "observedRuntimeFacts": len(observed_events),
+                "faultInjectionEvidence": len(injection_events),
+                "networkDecisionFacts": len(network_events),
+                "derivedDiagnosisInputs": 0,
+            },
             "allowedEvidence": [
                 "Primitive Trace", "Socket Events", "Timers", "State Transitions",
                 "Network Decisions", "Worker/Validation Errors",
@@ -409,9 +437,9 @@ class FailureDiagnosisEngine:
             likelyCauses=[title], targetView="tasks",
             learnTopic="Primitive / Timer / Socket evidence",
             expectedByScenario=(False if blind else bool(fault)),
-            scenarioNote=("盲诊断：Scenario/FaultConfig 未提供，FAULT_INJECTED 事件已排除" if blind
-                          else ("存在运行时 Fault Injection 证据；Scenario/FaultConfig 未作为诊断输入" if fault
-                                else "未检测到故障注入；按运行证据定位")),
+            scenarioNote=("证据隔离复算：Scenario/FaultConfig 未提供，FAULT_INJECTED 事件已排除" if blind
+                          else ("普通诊断：Scenario/FaultConfig 未作为输入；运行事件中的 FAULT_INJECTED 可作为证据层使用" if fault
+                                else "普通诊断：未检测到故障注入记录；按运行事实定位")),
             diagnosisInput=diagnosis_input, diagnosticVerdict=diagnostic_verdict,
             runtimeReplay=runtime_replay, blind=bool(blind),
             recoveryHint=suggested, traceTail=related[-6:], message=message,

@@ -9,9 +9,9 @@ def read(path: str) -> str:
 
 
 def test_v603_version_contract():
-    assert read("VERSION").strip() == "6.0.3"
-    assert 'version = "6.0.3"' in read("pyproject.toml")
-    assert '__version__ = "6.0.3"' in read("src/lte_sim/version.py")
+    assert read("VERSION").strip() == "6.0.4"
+    assert 'version = "6.0.4"' in read("pyproject.toml")
+    assert '__version__ = "6.0.4"' in read("src/lte_sim/version.py")
 
 
 def test_v603_next_step_full_text_is_not_ellipsized():

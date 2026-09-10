@@ -12,10 +12,10 @@ def read(rel: str) -> str:
 
 
 def test_v38_version_and_learning_notes_are_current():
-    assert read("VERSION").strip() == "6.0.3"
-    assert default_state()["version"] == "6.0.3"
+    assert read("VERSION").strip() == "6.0.4"
+    assert default_state()["version"] == "6.0.4"
     notes = read("docs/学习内容.md")
-    assert "当前版本：v6.0.3" in notes
+    assert "当前版本：v6.0.4" in notes
     assert "v3.8 Error Assistant" in notes
     assert len(notes) > 15000
     for topic in (
@@ -63,7 +63,7 @@ def test_v38_normal_failure_is_marked_unexpected():
     )
     assert report["expectedByScenario"] is False
     assert not report["evidence"]
-    assert report["root_cause"] == "UNCLASSIFIED_CONTROL_PLANE_FAILURE"
+    assert report["root_cause"] == "INSUFFICIENT_EVIDENCE"
 
 
 def test_v38_web_has_actionable_fault_dialog():

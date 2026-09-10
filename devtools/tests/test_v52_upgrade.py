@@ -26,7 +26,7 @@ def run_fault(tmp_path, preset):
         engine.close()
 
 def test_v52_version_and_clean_frontend_contract():
-    assert read("VERSION").strip() == "6.0.3"
+    assert read("VERSION").strip() == "6.0.4"
     assert not (ROOT / "src/lte_sim/desktop_app.py").exists()
     assert not (ROOT / "scripts/run-desktop.ps1").exists()
     assert "lte-sim-desktop" not in read("pyproject.toml")
@@ -102,5 +102,5 @@ def test_current_docs_follow_v53_consolidated_structure_without_obsolete_desktop
         assert (ROOT / "docs" / rel).is_file(), rel
     assert "run-desktop.ps1" not in read("docs/项目架构与源码结构.md")
     assert "Web 与 Windows EXE" in read("docs/学习内容.md")
-    assert "6.0.3" in read("packaging/version-info.txt")
-    assert "v6.0.3" in read("docs/第三方依赖与许可.md")
+    assert "6.0.4" in read("packaging/version-info.txt")
+    assert "v6.0.4" in read("docs/第三方依赖与许可.md")

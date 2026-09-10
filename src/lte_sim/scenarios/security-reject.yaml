@@ -1,0 +1,13 @@
+id: SECURITY_REJECT
+fault:
+  enabled: true
+  stage: security_mode
+  task: NAS
+  primitive: SECURITY_RESPONSE_IND
+  fault_type: MODIFY_FIELD
+  field: kind
+  value: SECURITY_REJECT
+  delay_ms: 0
+  timeout_ms: 3000
+  layer: primitive
+  fault_id: ''

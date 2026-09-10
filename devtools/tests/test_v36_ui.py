@@ -39,7 +39,7 @@ def _free_port() -> int:
 
 
 def test_v36_default_state_version():
-    assert default_state()["version"] == "6.0.3"
+    assert default_state()["version"] == "6.0.4"
 
 
 def test_v36_web_dashboard_is_split_into_five_functional_views():

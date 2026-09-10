@@ -253,9 +253,15 @@ def make_http_handler(context: HTTPContext):
                 params = parse_qs(parsed.query)
                 try:
                     run_id = params.get("run", [""])[0]
-                    export_dir = context.runs_dir / ".exports"
-                    archive = context.run_repository.export_zip(run_id, export_dir / "run-export.zip")
-                    self.send_file(archive, "application/zip", f"{Path(run_id).name}.zip")
+                    # v6.0.4: each HTTP request owns a private temporary archive.
+                    # ThreadingHTTPServer may serve two exports concurrently; a
+                    # shared .exports/run-export.zip allowed one request to
+                    # overwrite another before send_file() had consumed it.
+                    with tempfile.TemporaryDirectory(prefix="lte-http-run-export-") as temp_dir:
+                        archive = context.run_repository.export_zip(
+                            run_id, Path(temp_dir) / f"{Path(run_id).name or 'run'}.zip"
+                        )
+                        self.send_file(archive, "application/zip", f"{Path(run_id).name}.zip")
                 except ValueError as exc:
                     self.send_json(400, {"ok": False, "message": str(exc)})
                 return

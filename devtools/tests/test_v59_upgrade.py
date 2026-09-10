@@ -12,8 +12,8 @@ def read(rel: str) -> str:
 
 def test_v59_version_and_startup_mode_is_before_overview():
     source = read("src/lte_sim/startup_ui.py")
-    assert read("VERSION").strip() == "6.0.3"
-    assert 'version = "6.0.3"' in read("pyproject.toml")
+    assert read("VERSION").strip() == "6.0.4"
+    assert 'version = "6.0.4"' in read("pyproject.toml")
     assert 'root.after_idle(lambda: root.state("zoomed"))' not in source
     assert '第 1 步 · 选择模式' in source and '启动摘要' not in source
     assert 'width=1160, height=760' in source

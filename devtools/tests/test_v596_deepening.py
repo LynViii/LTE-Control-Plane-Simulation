@@ -38,7 +38,7 @@ def run_preset(tmp_path: Path, preset: str):
 
 
 def test_v596_version_and_security_accuracy_ui():
-    assert read("VERSION").strip() == "6.0.3"
+    assert read("VERSION").strip() == "6.0.4"
     html = read("src/lte_sim/web/index.html")
     js = read("src/lte_sim/web/app.js")
     css = read("src/lte_sim/web/ui.css")

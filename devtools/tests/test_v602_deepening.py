@@ -82,7 +82,7 @@ def test_v602_security_result_layout_is_single_block():
 
 
 def test_v602_version_contract():
-    assert read("VERSION").strip() == "6.0.3"
-    assert 'version = "6.0.3"' in read("pyproject.toml")
-    assert '__version__ = "6.0.3"' in read("src/lte_sim/version.py")
-    assert "6.0.3" in read("packaging/version-info.txt")
+    assert read("VERSION").strip() == "6.0.4"
+    assert 'version = "6.0.4"' in read("pyproject.toml")
+    assert '__version__ = "6.0.4"' in read("src/lte_sim/version.py")
+    assert "6.0.4" in read("packaging/version-info.txt")

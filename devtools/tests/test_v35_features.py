@@ -106,7 +106,7 @@ def test_v35_failure_diagnosis_fallback():
     report = FailureDiagnosisEngine().analyze(
         step="unknown", message="unexpected boom", transaction_id="tx", scenario="NORMAL"
     )
-    assert report["code"] == "UNCLASSIFIED_CONTROL_PLANE_FAILURE"
+    assert report["code"] == "INSUFFICIENT_EVIDENCE"
 
 
 def make_store(tmp_path: Path) -> StateStore:
@@ -273,6 +273,6 @@ def test_v35_engine_failure_generates_diagnosis(tmp_path, scenario, code):
 
 def test_v35_default_state_version_and_sections():
     state = default_state()
-    assert state["version"] == "6.0.3"
+    assert state["version"] == "6.0.4"
     for key in ("protocolTrace", "packetTrace", "atHistory", "timers", "diagnosis", "traceSummary"):
         assert key in state

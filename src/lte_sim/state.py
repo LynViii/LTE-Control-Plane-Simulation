@@ -103,6 +103,12 @@ def default_state() -> dict:
             "heartbeatAt": None,
             "agent": {},
             "lastError": None,
+            "archiveTransfer": {
+                "status": "IDLE",
+                "transactionId": None,
+                "completedAt": None,
+                "streams": {},
+            },
         },
         "flow": {
             "transactionId": None,
@@ -194,6 +200,9 @@ class StateStore:
         self._subscribers: set[queue.Queue] = set()
         self._state = self._load()
         self._last_state_notice = 0.0
+        self._state_notice_interval = 0.05
+        self._state_notice_lock = threading.RLock()
+        self._state_notice_timer: threading.Timer | None = None
 
     def _load(self) -> dict:
         base = default_state()
@@ -323,6 +332,43 @@ class StateStore:
             self.broadcast({"type": "state"})
         return snap
 
+    def _flush_scheduled_state_notice(self) -> None:
+        with self._state_notice_lock:
+            self._state_notice_timer = None
+            if not self._has_subscribers():
+                return
+            self._last_state_notice = time.monotonic()
+        self.broadcast({"type": "state"})
+
+    def _schedule_state_notice(self) -> None:
+        """Coalesce log-driven full-state refreshes and keep a trailing update.
+
+        SSE still receives each lightweight ``log`` event, but expensive full
+        ``public_state()`` serialization is triggered at most once per window.
+        A timer guarantees that the last burst is eventually reflected in UI.
+        """
+        if not self._has_subscribers():
+            return
+        with self._state_notice_lock:
+            now = time.monotonic()
+            delay = max(0.0, self._state_notice_interval - (now - self._last_state_notice))
+            if delay <= 0:
+                self._last_state_notice = now
+                timer = self._state_notice_timer
+                self._state_notice_timer = None
+                if timer is not None:
+                    timer.cancel()
+                immediate = True
+            else:
+                immediate = False
+                if self._state_notice_timer is None or not self._state_notice_timer.is_alive():
+                    timer = threading.Timer(delay, self._flush_scheduled_state_notice)
+                    timer.daemon = True
+                    self._state_notice_timer = timer
+                    timer.start()
+        if immediate:
+            self.broadcast({"type": "state"})
+
     def log(self, source: str, target: str, event_type: str, message: str, detail=None, tx_id=None) -> dict:
         entry = {
             "id": f"{int(time.time() * 1000)}-{os.urandom(3).hex()}",
@@ -342,11 +388,11 @@ class StateStore:
                 self._state["protocolTrace"].append(trace)
                 self._state["protocolTrace"] = self._state["protocolTrace"][-300:]
                 self._state["traceSummary"] = summarize_trace(self._state["protocolTrace"])
-            need_state = self._has_subscribers()
-            snap = copy.deepcopy(self._state) if need_state else None
+        # ``log`` is incremental.  The browser currently renders state events,
+        # so request a coalesced state refresh without deep-copying the full
+        # state for every log record.
         self.broadcast({"type": "log", "payload": entry})
-        if snap is not None:
-            self.broadcast({"type": "state", "payload": snap})
+        self._schedule_state_notice()
         return entry
 
     def subscribe(self, maxsize: int = 200) -> queue.Queue:

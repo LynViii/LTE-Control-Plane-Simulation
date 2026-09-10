@@ -10,9 +10,9 @@ def read(path: str) -> str:
 
 
 def test_version_and_current_docs_are_v592():
-    assert read("VERSION").strip() == "6.0.3"
-    assert '__version__ = "6.0.3"' in read("src/lte_sim/version.py")
-    assert 'version = "6.0.3"' in read("pyproject.toml")
+    assert read("VERSION").strip() == "6.0.4"
+    assert '__version__ = "6.0.4"' in read("src/lte_sim/version.py")
+    assert 'version = "6.0.4"' in read("pyproject.toml")
     for path in (
         "README.md",
         "docs/README.md",
@@ -23,7 +23,7 @@ def test_version_and_current_docs_are_v592():
         "docs/项目架构与源码结构.md",
         "docs/第三方依赖与许可.md",
     ):
-        assert "6.0.3" in read(path), path
+        assert "6.0.4" in read(path), path
 
 
 def test_current_docs_do_not_repeat_removed_v591_claims():

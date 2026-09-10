@@ -9,8 +9,8 @@ def read(path: str) -> str:
 
 
 def test_v56_version_and_windows_agent_is_windowed():
-    assert read("VERSION").strip() == "6.0.3"
-    assert 'version = "6.0.3"' in read("pyproject.toml")
+    assert read("VERSION").strip() == "6.0.4"
+    assert 'version = "6.0.4"' in read("pyproject.toml")
     build = read("scripts/windows/build-exe.ps1")
     agent_block = build.split('$agentPyInstallerArgs = @(', 1)[1].split(')', 1)[0]
     assert '"--windowed"' in agent_block

@@ -166,7 +166,7 @@ def test_lan_preflight_http_true_two_protocol_sockets_and_disconnect(tmp_path):
         assert controller_settings.embedded_web_host == controller_ip
         controller = SimulatorApplication(controller_settings).start(block=False, enable_http=True)
         health = _http_json(controller_settings.embedded_web_url + "/api/health")
-        assert health["ok"] is True and health["version"] == "6.0.3"
+        assert health["ok"] is True and health["version"] == "6.0.4"
 
         status, lan_test = _post_json(controller_settings.embedded_web_url + "/api/lan/test", {})
         assert status == 200

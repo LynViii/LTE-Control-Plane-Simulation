@@ -798,16 +798,9 @@ class SimulatorEngine:
         self.store.log("L1", "RRC", "PRIMITIVE", "BCCH_DATA_IND: MIB/SIB validation passed", payload_obj, ctx.transaction_id)
 
 
-def build_enb_response(request, base_enb, socket_timeout=2.0, network_context: NetworkControlPlaneContext | None = None):
-    """eNB/MME control-plane peer driven by received wire fields.
-
-    With ``network_context`` this becomes a per-transaction stateful peer: later
-    NAS/RRC decisions depend on earlier messages actually received on the TCP
-    endpoint.  The optional argument keeps the pure stateless helper available
-    for focused unit tests and third-party embedding.
-    """
+def _build_enb_response_locked(request, base_enb, socket_timeout=2.0, net_ctx=None):
+    """Build one peer response while the caller owns any network-context lock."""
     kind = request.get("type")
-    net_ctx = network_context.get(request) if network_context is not None else None
     context_before = copy.deepcopy(net_ctx.public()) if net_ctx is not None else None
 
     def ctx_check(name, field, expected, actual, passed):
@@ -1111,4 +1104,18 @@ def build_enb_response(request, base_enb, socket_timeout=2.0, network_context: N
             if isinstance(response.get("networkDecision"), dict):
                 response["networkDecision"]["outputMessage"][key] = request[key]
     return response
+
+
+def build_enb_response(request, base_enb, socket_timeout=2.0, network_context: NetworkControlPlaneContext | None = None):
+    """eNB/MME control-plane peer driven by received wire fields.
+
+    Stateless calls remain available for focused tests.  Stateful calls execute
+    the complete Context -> Rule -> Decision -> State -> Message cycle while
+    holding the NetworkControlPlaneContext lock, preventing concurrent updates
+    to the same transaction from interleaving.
+    """
+    if network_context is None:
+        return _build_enb_response_locked(request, base_enb, socket_timeout, None)
+    with network_context.locked(request) as net_ctx:
+        return _build_enb_response_locked(request, base_enb, socket_timeout, net_ctx)
 

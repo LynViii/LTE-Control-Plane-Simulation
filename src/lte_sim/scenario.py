@@ -55,5 +55,11 @@ class ScenarioLoader:
             raise ScenarioValidationError("duplicate scenario id")
         return {item.id: item for item in specs}
 
-def default_loader(project_root: Path) -> ScenarioLoader:
-    return ScenarioLoader(Path(project_root) / "scenarios" / "schema" / "scenario.schema.json")
+def default_loader(project_root: Path | None = None) -> ScenarioLoader:
+    """Return a loader that works in source, wheel and frozen layouts."""
+    if project_root is not None:
+        candidate = Path(project_root) / "scenarios" / "schema" / "scenario.schema.json"
+        if candidate.is_file():
+            return ScenarioLoader(candidate)
+    from .resources import scenario_schema_path
+    return ScenarioLoader(scenario_schema_path())

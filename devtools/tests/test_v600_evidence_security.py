@@ -27,9 +27,9 @@ def _rtp(seq: int, payload: bytes = b"v600-srtp") -> bytes:
 
 
 def test_version_and_standalone_cli_contract():
-    assert (ROOT / "VERSION").read_text().strip() == "6.0.3"
+    assert (ROOT / "VERSION").read_text().strip() == "6.0.4"
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'version = "6.0.3"' in pyproject
+    assert 'version = "6.0.4"' in pyproject
     assert 'lte-sim-security = "lte_sim.security_engine.cli:main"' in pyproject
     assert "## v6.0.0" in (ROOT / "docs/版本记录.md").read_text(encoding="utf-8")
     assert "## v5.9.7" in (ROOT / "docs/版本记录.md").read_text(encoding="utf-8")

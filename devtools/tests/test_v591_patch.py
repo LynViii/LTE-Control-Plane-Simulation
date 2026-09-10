@@ -14,8 +14,8 @@ def read(rel: str) -> str:
 
 def test_v591_version_startup_is_compact_not_maximized():
     source = read("src/lte_sim/startup_ui.py")
-    assert read("VERSION").strip() == "6.0.3"
-    assert 'version = "6.0.3"' in read("pyproject.toml")
+    assert read("VERSION").strip() == "6.0.4"
+    assert 'version = "6.0.4"' in read("pyproject.toml")
     assert 'root.state("zoomed")' not in source
     assert 'width=1160, height=760' in source
     assert '启动摘要' not in source

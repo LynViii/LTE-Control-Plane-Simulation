@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import socket
 import time
 from pathlib import Path
 
 from lte_sim.config import Settings
 from lte_sim.lan import ModemNodeAgent
-from lte_sim.lan import ManagementClient
+from lte_sim.lan import ManagementClient, _stream_digest
 from lte_sim.network import send_at_line
 from lte_sim.web_app import SimulatorApplication
 
@@ -58,8 +59,28 @@ def test_lan_controller_and_modem_agent_use_two_protocol_sockets_and_management(
         enb_peer = next(item for item in logs if item["message"] == "Modem-eNB socket connected")
         assert ap_peer["detail"]["localIp"] == modem_ip
         assert enb_peer["detail"]["localIp"] == controller_ip
+        archive_deadline = time.monotonic() + 5
+        while time.monotonic() < archive_deadline:
+            archive = controller.store.snapshot().get("lan", {}).get("archiveTransfer", {})
+            if archive.get("status") == "ARCHIVED" and (tmp_path / "controller-runs").exists():
+                break
+            time.sleep(0.03)
+        archived_state = controller.store.snapshot()
+        assert archived_state["lan"]["archiveTransfer"]["status"] == "ARCHIVED"
         assert (tmp_path / "controller-runs").exists()
         assert not (tmp_path / "agent-runs").exists()
+
+        # v6.0.4: terminal archive must come from the complete transaction
+        # evidence transfer, not the recent Management Snapshot window.
+        tx = archived_state["flow"]["transactionId"]
+        agent_events = [row for row in agent.store.snapshot()["runtimeEvents"] if row.get("transactionId") == tx]
+        run_dirs = [item for item in (tmp_path / "controller-runs").iterdir() if item.is_dir() and not item.name.startswith(".")]
+        assert len(run_dirs) == 1
+        archived_events = json.loads((run_dirs[0] / "events.json").read_text(encoding="utf-8"))
+        transfer = json.loads((run_dirs[0] / "lan-evidence-transfer.json").read_text(encoding="utf-8"))
+        assert archived_events == agent_events
+        assert transfer["streams"]["runtimeEvents"]["count"] == len(agent_events)
+        assert transfer["streams"]["runtimeEvents"]["digest"] == _stream_digest(agent_events)
     finally:
         controller.stop()
         agent.stop()

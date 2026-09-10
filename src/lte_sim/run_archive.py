@@ -90,6 +90,10 @@ class InteractiveRunArchiver:
             "metrics": copy.deepcopy(state.get("metrics", {})),
             "expectationMatched": None,
         }
+        lan_transfer = copy.deepcopy((state.get("lan", {}) or {}).get("archiveTransfer"))
+        artifacts = ["scenario-context.json", "manifest.json", "summary.json", "events.json", "faults.json", "diagnosis.json", "primitives.json", "logs.json", "fingerprint.txt"]
+        if isinstance(lan_transfer, dict) and lan_transfer.get("status") in {"VERIFIED", "ARCHIVED"}:
+            artifacts.append("lan-evidence-transfer.json")
         manifest = {
             "formatVersion": "1.0",
             "runId": run_id,
@@ -104,7 +108,8 @@ class InteractiveRunArchiver:
             "result": result,
             "python": platform.python_version(),
             "platform": platform.platform(),
-            "artifacts": ["scenario-context.json", "manifest.json", "summary.json", "events.json", "faults.json", "diagnosis.json", "primitives.json", "logs.json", "fingerprint.txt"],
+            "lanEvidenceTransfer": lan_transfer if "lan-evidence-transfer.json" in artifacts else None,
+            "artifacts": artifacts,
         }
 
         temp_dir = self.output_root / f".{run_id}.tmp-{uuid4().hex[:8]}"
@@ -118,6 +123,8 @@ class InteractiveRunArchiver:
             _json_write(temp_dir / "diagnosis.json", state.get('diagnosis',{}))
             _json_write(temp_dir / "primitives.json", state.get('taskEvents',state.get('primitiveTrace',[])))
             _json_write(temp_dir / "logs.json", state.get('logs',[]))
+            if "lan-evidence-transfer.json" in artifacts:
+                _json_write(temp_dir / "lan-evidence-transfer.json", lan_transfer)
             (temp_dir / "fingerprint.txt").write_text(fingerprint + "\n", encoding="ascii")
             temp_dir.rename(run_dir)
         except Exception:
