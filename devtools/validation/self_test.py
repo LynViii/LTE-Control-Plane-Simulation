@@ -88,8 +88,6 @@ def check_frontend_contract() -> None:
     print("Web + Windows EXE frontend contract PASS\n")
 
 
-
-
 def check_api_contract() -> None:
     js = (ROOT / "src" / "lte_sim" / "web" / "app.js").read_text(encoding="utf-8")
     api = (ROOT / "src" / "lte_sim" / "http_api.py").read_text(encoding="utf-8")
@@ -97,7 +95,15 @@ def check_api_contract() -> None:
     missing = sorted(path for path in frontend_paths if path.split("?", 1)[0] not in api)
     if missing:
         raise RuntimeError(f"Frontend API paths missing from HTTP server: {missing}")
-    for required in ("/api/attach/cancel", "/api/runs/location", "/api/runs/open-folder", "/api/security/self-test", "/api/security/udp", "/api/security/standalone-demo", "/api/diagnostics/blind"):
+    for required in (
+        "/api/attach/cancel",
+        "/api/runs/location",
+        "/api/runs/open-folder",
+        "/api/security/self-test",
+        "/api/security/udp",
+        "/api/security/standalone-demo",
+        "/api/diagnostics/blind",
+    ):
         if required not in api:
             raise RuntimeError(f"Required HTTP route missing: {required}")
     print(f"Frontend/API route contract PASS ({len(frontend_paths)} frontend routes)\n")
@@ -107,81 +113,99 @@ def check_document_contract() -> None:
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     docs_dir = ROOT / "docs"
     required_docs = [
-        "README.md", "README-说明书.md", "LTE控制面系统仿真平台技术文档.md", "LTE控制面系统仿真平台结题报告.md",
-        "项目架构与源码结构.md", "状态机与故障诊断.md", "Security实现与测试.md", "LAN模式使用与排查.md",
-        "Windows构建与运行.md", "学习内容.md", "需求验收与交付.md", "版本记录.md", "第三方依赖与许可.md",
-        "reference/Security独立Demo.md", "reference/完整更新记录.md", "reference/流程图提示词.md",
+        "README.md",
+        "ARCHITECTURE.md",
+        "ATTACH_AND_DIAGNOSIS.md",
+        "SECURITY.md",
+        "TECHNICAL_DESIGN.md",
+        "WINDOWS_BUILD.md",
+        "images/flowcharts/README.md",
     ]
     missing = [name for name in required_docs if not (docs_dir / name).is_file()]
     if missing:
-        raise RuntimeError(f"Required current docs missing: {missing}")
-    if (docs_dir / "README-给带教老师.md").exists():
-        raise RuntimeError("Obsolete README-给带教老师.md must not be delivered")
+        raise RuntimeError(f"Required public docs missing: {missing}")
 
     root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    manual = (docs_dir / "README-说明书.md").read_text(encoding="utf-8")
-    if version not in root_readme or version not in manual:
-        raise RuntimeError("Current README/manual version does not match VERSION")
+    docs_index = (docs_dir / "README.md").read_text(encoding="utf-8")
+    security_doc = (docs_dir / "SECURITY.md").read_text(encoding="utf-8")
+    windows_doc = (docs_dir / "WINDOWS_BUILD.md").read_text(encoding="utf-8")
 
-    current_text = "\n".join((docs_dir / name).read_text(encoding="utf-8") for name in required_docs if name not in {"reference/完整更新记录.md", "版本记录.md"})
-    obsolete_claims = [
-        "Windows 下默认最大化",
-        "Windows 默认最大化",
-        "运行控制改为三个等宽按钮同排",
-        "运行控制收敛为 `开始 Attach / 关闭无线 / 重置状态`",
-        "正常链路 3 包",
-        "Experiment 页面可以直接启动 LTE / SRTP",
-    ]
-    found = [claim for claim in obsolete_claims if claim in root_readme or claim in current_text]
-    if found:
-        raise RuntimeError(f"Obsolete current-document claims detected: {found}")
+    if version not in root_readme:
+        raise RuntimeError("Root README version does not match VERSION")
+    if version not in security_doc or version not in windows_doc:
+        raise RuntimeError("Versioned public technical docs do not match VERSION")
 
-    for phrase in ("开始 Attach", "中断当前流程", "关闭无线", "系统重置"):
-        if phrase not in manual:
-            raise RuntimeError(f"README-说明书 missing current runtime control: {phrase}")
-    security_doc = (docs_dir / "Security实现与测试.md").read_text(encoding="utf-8")
-    for phrase in ("run_standalone_core_checks", "Security Core 本身不依赖 Web、HTTP、UDP、Attach", "cryptography/OpenSSL", "StandaloneSrtpModule", "security-demo.cmd", "不再为了这一功能额外构建第三个 Security Demo EXE", "SRTCP", "32-bit NAS COUNT", "128-EEA2", "128-EIA2", "re-key", "AES-GCM"):
+    for name in required_docs[1:6]:
+        if name not in docs_index:
+            raise RuntimeError(f"docs/README.md does not index {name}")
+
+    for phrase in (
+        "StandaloneSrtpModule",
+        "SRTCP",
+        "32-bit NAS COUNT",
+        "128-EEA2",
+        "128-EIA2",
+        "re-key",
+        "AES-GCM",
+    ):
         if phrase not in security_doc:
-            raise RuntimeError(f"Security documentation missing current implementation detail: {phrase}")
+            raise RuntimeError(f"SECURITY.md missing current implementation detail: {phrase}")
+
+    build_script = (ROOT / "scripts" / "windows" / "build-exe.ps1").read_text(encoding="utf-8")
+    for required_path in (
+        "docs\\WINDOWS_BUILD.md",
+        "README.md",
+        "LICENSES\\README.md",
+    ):
+        if required_path not in build_script:
+            raise RuntimeError(f"Windows build script missing public release dependency: {required_path}")
+    for obsolete_path in (
+        "docs\\Windows构建与运行.md",
+        "docs\\第三方依赖与许可.md",
+    ):
+        if obsolete_path in build_script:
+            raise RuntimeError(f"Windows build script still depends on private/internal file: {obsolete_path}")
 
     flowcharts = [
-        "00-system-flow-overview.png", "01-lte-attach-11-step-state-machine.png",
-        "02-mib-sib-validation-branches.png", "03-authentication-res-xres-decision.png",
-        "04-control-plane-timer-timeout-path.png", "05-fault-injection-runtime-consumption.png",
-        "06-modem-four-tasks-taskbus.png", "07-system-architecture-three-entities.png",
-        "08-srtp-real-validation-path.png", "09-failure-diagnosis-closed-loop.png",
+        "00-system-flow-overview.webp",
+        "01-lte-attach-11-step-state-machine.webp",
+        "02-mib-sib-validation-branches.webp",
+        "03-authentication-res-xres-decision.webp",
+        "04-control-plane-timer-timeout-path.webp",
+        "05-fault-injection-runtime-consumption.webp",
+        "06-modem-four-tasks-taskbus.webp",
+        "07-system-architecture-three-entities.webp",
+        "08-srtp-real-validation-path.webp",
+        "09-failure-diagnosis-closed-loop.webp",
     ]
     missing_flows = [name for name in flowcharts if not (docs_dir / "images" / "flowcharts" / name).is_file()]
     if missing_flows:
-        raise RuntimeError(f"Missing v6 flowcharts: {missing_flows}")
+        raise RuntimeError(f"Missing public flowcharts: {missing_flows}")
 
-    index = (docs_dir / "README.md").read_text(encoding="utf-8")
-    for name in required_docs[1:]:
-        if name not in index and Path(name).name not in index:
-            raise RuntimeError(f"docs/README.md does not index {name}")
-    print(f"Current documentation contract PASS ({len(required_docs)} active docs)\n")
+    print(f"Public documentation contract PASS ({len(required_docs)} indexed docs, {len(flowcharts)} flowcharts)\n")
+
 
 def main() -> int:
     generated_bytecode: list[Path] = []
     run_token = uuid4().hex[:8]
     supplied_temp = os.environ.get("LTE_SIM_TEST_TEMP")
     supplied_pytest = os.environ.get("LTE_SIM_PYTEST_BASETEMP")
-    temp_dir = Path(supplied_temp) if supplied_temp else ROOT.parent / f"lte-v44-temp-{run_token}"
-    pytest_dir = Path(supplied_pytest) if supplied_pytest else ROOT.parent / f"lte-v44-pytest-{run_token}"
+    temp_dir = Path(supplied_temp) if supplied_temp else ROOT.parent / f"lte-delivery-temp-{run_token}"
+    pytest_dir = Path(supplied_pytest) if supplied_pytest else ROOT.parent / f"lte-delivery-pytest-{run_token}"
     try:
-        # Use an explicit writable sibling because Windows user-temp and some
-        # synced project subdirectories can have stale ACLs.
         temp_dir.mkdir(parents=True, exist_ok=True)
         pytest_dir.mkdir(parents=True, exist_ok=True)
         test_env = os.environ.copy()
         test_env["TEMP"] = str(temp_dir)
         test_env["TMP"] = str(temp_dir)
         test_env["PYTHONDONTWRITEBYTECODE"] = "1"
-        # Keep delivery validation deterministic even when the host Python has
-        # unrelated third-party pytest plugins installed.
         test_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
         test_env["PYTHONPATH"] = str(ROOT / "src")
-        run([sys.executable, "-m", "compileall", "-q", "-b", str(ROOT / "src"), str(ROOT / "devtools" / "tests")], "[1/8] Python compileall", env=test_env)
+        run(
+            [sys.executable, "-m", "compileall", "-q", "-b", str(ROOT / "src"), str(ROOT / "devtools" / "tests")],
+            "[1/8] Python compileall",
+            env=test_env,
+        )
         generated_bytecode = list(ROOT.rglob("*.pyc"))
 
         print("[2/8] HTML structure/id consistency")
@@ -204,7 +228,7 @@ def main() -> int:
         print("[6/8] Frontend/API route contract")
         check_api_contract()
 
-        print("[7/8] Current documentation contract")
+        print("[7/8] Public documentation/release contract")
         check_document_contract()
 
         run(
