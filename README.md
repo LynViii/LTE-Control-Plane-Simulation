@@ -30,6 +30,17 @@
 - **Local / LAN 两种部署模式**：既可单机运行，也可让远端 Modem Agent 与 Controller 通过局域网协作。
 - **Web UI + Windows WebView2 Client**：浏览状态、消息、Task / Trace、Security 和诊断结果。
 
+## 技术文档
+
+深入了解项目实现可从 [`docs/README.md`](docs/README.md) 开始：
+
+- [项目架构与源码结构](docs/ARCHITECTURE.md)
+- [Attach 状态机与故障诊断](docs/ATTACH_AND_DIAGNOSIS.md)
+- [Security 实现与测试](docs/SECURITY.md)
+- [详细技术设计](docs/TECHNICAL_DESIGN.md)
+- [Windows 构建与运行](docs/WINDOWS_BUILD.md)
+- [架构与流程图](docs/images/flowcharts/)
+
 ## 快速开始
 
 需要 Python 3.10 或以上版本。

@@ -27,7 +27,20 @@ runs/
 # Isolated environment created by build-exe.cmd
 .venv-build/
 
-# Local delivery documents and generated artifacts are not published.
-/docs/
+# Keep local/internal documents private while allowing the curated public docs.
+/docs/*
+!/docs/README.md
+!/docs/ARCHITECTURE.md
+!/docs/ATTACH_AND_DIAGNOSIS.md
+!/docs/SECURITY.md
+!/docs/TECHNICAL_DESIGN.md
+!/docs/WINDOWS_BUILD.md
+!/docs/images/
+/docs/images/*
+!/docs/images/flowcharts/
+/docs/images/flowcharts/*
+!/docs/images/flowcharts/README.md
+!/docs/images/flowcharts/*.webp
+
 /devtools/archive/
 /packaging/SOURCE-MANIFEST.json
