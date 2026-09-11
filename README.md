@@ -11,9 +11,9 @@
 
 ## 项目展示
 
-![Fault Injection](assets/screenshots/fault-injection.jpg)
+![LTE Control Plane Simulator Main UI](assets/screenshots/main-ui.jpg)
 
-故障配置只定义注入位置和动作；运行到对应位置后，Fault Injector 会真实修改原语、TCP 消息或计时器，再把处理后的数据继续交给原 Task 或 eNB/MME。网络侧基于实际收到的数据和当前上下文重新执行判定，诊断则沿本次运行证据回放失败链路。
+主界面集中展示运行条件、Attach 控制、当前状态、11 步进度、Serving Cell、本次会话与系统拓扑；下方可切换 `Attach`、`AT / Socket`、`Task / Trace`、`Security` 和诊断工作区。AP–Modem 与 Modem–eNB/MME 的协议消息由后端 TCP 链路实际传递，页面主要负责控制、观察和故障分析。
 
 ## 核心能力
 
