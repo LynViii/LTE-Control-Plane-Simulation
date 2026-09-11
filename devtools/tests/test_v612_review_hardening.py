@@ -8,7 +8,15 @@ import pytest
 
 from lte_sim.diagnostics.engine import FailureDiagnosisEngine
 import lte_sim.http_api as http_api
-from lte_sim.security_engine import SrtpEngine, SrtcpError
+from lte_sim.security_engine import (
+    DOWNLINK,
+    UPLINK,
+    NasPlainPduCodec,
+    NasSecurityContext,
+    NasSecurityError,
+    SrtpEngine,
+    SrtcpError,
+)
 from lte_sim.security_engine.service import _project_srtcp_wire_at_index, _srtcp_wire_index
 from lte_sim.security_engine.srtcp import RTCPCompoundPacket
 
@@ -20,7 +28,7 @@ def _rr(ssrc: int = 0x13572468) -> bytes:
     return struct.pack("!BBHI", 0x80, 201, 1, ssrc)
 
 
-def test_project_srtcp_sender_keeps_rfc_initial_index_zero_but_reference_helper_can_align_index_one():
+def test_v612_security_wire_semantics_keep_rfc_indices_and_eps_new_context_headers():
     native = SrtpEngine.create_session_pair(KEY)
     aligned = SrtpEngine.create_session_pair(KEY)
     try:
@@ -30,6 +38,51 @@ def test_project_srtcp_sender_keeps_rfc_initial_index_zero_but_reference_helper_
     finally:
         native.close()
         aligned.close()
+
+    # TS 24.301 uses SHT=3/4 for Security Mode Command/Complete because
+    # those messages establish and confirm a new EPS security context.
+    mme = NasSecurityContext.for_transaction("v612-nas-sht")
+    ue = NasSecurityContext.for_transaction("v612-nas-sht")
+    smc_plain = NasPlainPduCodec.encode(
+        "NAS_SECURITY_MODE_COMMAND", {"integrity": "EIA2", "cipher": "EEA2"}
+    )
+    smc = mme.protect(smc_plain, direction=DOWNLINK, ciphered=False)
+    assert smc[0] >> 4 == 3
+    assert ue.unprotect(
+        smc, direction=DOWNLINK, expected_kind="NAS_SECURITY_MODE_COMMAND", expected_ciphered=False
+    ) == smc_plain
+
+    complete_plain = NasPlainPduCodec.encode(
+        "NAS_SECURITY_MODE_COMPLETE", {"integrity": "EIA2", "cipher": "EEA2"}
+    )
+    complete = ue.protect(complete_plain, direction=UPLINK, ciphered=True)
+    assert complete[0] >> 4 == 4
+    assert mme.unprotect(
+        complete, direction=UPLINK, expected_kind="NAS_SECURITY_MODE_COMPLETE", expected_ciphered=True
+    ) == complete_plain
+
+    # Subsequent protected NAS messages remain on ordinary SHT=2.
+    accept = mme.protect(
+        NasPlainPduCodec.encode("NAS_ATTACH_ACCEPT", {}), direction=DOWNLINK, ciphered=True
+    )
+    done = ue.protect(
+        NasPlainPduCodec.encode("NAS_ATTACH_COMPLETE", {}), direction=UPLINK, ciphered=True
+    )
+    assert accept[0] >> 4 == 2
+    assert done[0] >> 4 == 2
+
+    # A valid EEA2/EIA2 Security Mode Complete using ordinary SHT=2 must be
+    # rejected before receiver COUNT/replay state is committed.
+    bad_tx = NasSecurityContext.for_transaction("v612-nas-wrong-sht")
+    bad_rx = NasSecurityContext.for_transaction("v612-nas-wrong-sht")
+    wrong = bad_tx.protect(
+        complete_plain, direction=UPLINK, ciphered=True, new_security_context=False
+    )
+    assert wrong[0] >> 4 == 2
+    with pytest.raises(NasSecurityError) as exc:
+        bad_rx.unprotect(wrong, direction=UPLINK, expected_kind="NAS_SECURITY_MODE_COMPLETE")
+    assert exc.value.code == "NAS_SECURITY_CONTEXT_MODE_MISMATCH"
+    assert bad_rx.public_state()["uplinkRxHighest"] == -1
 
 
 def test_rtcp_type_length_check_uses_unpadded_length():
