@@ -1,0 +1,1 @@
+binary flowcharts are stored as WebP files; see README.md for the index.
