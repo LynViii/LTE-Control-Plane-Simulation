@@ -11,7 +11,7 @@
 
 ## 项目展示
 
-![LTE Control Plane Simulator Main UI](assets/screenshots/main-ui.jpg)
+![LTE Control Plane Simulator Main UI](assets/screenshots/main-ui.webp)
 
 主界面集中展示运行条件、Attach 控制、当前状态、11 步进度、Serving Cell、本次会话与系统拓扑；下方可切换 `Attach`、`AT / Socket`、`Task / Trace`、`Security` 和诊断工作区。AP–Modem 与 Modem–eNB/MME 的协议消息由后端 TCP 链路实际传递，页面主要负责控制、观察和故障分析。
 
