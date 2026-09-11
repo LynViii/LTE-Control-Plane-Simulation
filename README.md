@@ -1,6 +1,6 @@
 # LTE Control Plane Simulation
 
-[![CI](https://github.com/LynViii/LTE-Control-Plane-Simulation/actions/workflows/ci.yml/badge.svg)](https://github.com/LynViii/LTE-Control-Plane-Simulation/actions/workflows/ci.yml)
+[![CI](https://github.com/LynViii/LTE-Control-Plane-Simulation/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/LynViii/LTE-Control-Plane-Simulation/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Version](https://img.shields.io/badge/version-6.1.2-green)
 [![Download](https://img.shields.io/badge/Download-v6.1.2%20Windows-2ea44f?logo=github)](https://github.com/LynViii/LTE-Control-Plane-Simulation/releases/download/v6.1.2/LTE-Control-Plane-Simulator-v6.1.2-win64.zip)
