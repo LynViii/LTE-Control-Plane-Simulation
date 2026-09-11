@@ -1,14 +1,14 @@
 # LTE Control Plane Simulation
 
-[![CI](https://github.com/LiYuansheng0209/LTE-Control-Plane-Simulation/actions/workflows/ci.yml/badge.svg)](https://github.com/LiYuansheng0209/LTE-Control-Plane-Simulation/actions/workflows/ci.yml)
+[![CI](https://github.com/LynViii/LTE-Control-Plane-Simulation/actions/workflows/ci.yml/badge.svg)](https://github.com/LynViii/LTE-Control-Plane-Simulation/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Version](https://img.shields.io/badge/version-6.1.2-green)
-[![Download](https://img.shields.io/badge/Download-v6.1.2%20Windows-2ea44f?logo=github)](https://github.com/LiYuansheng0209/LTE-Control-Plane-Simulation/releases/download/v6.1.2/LTE-Control-Plane-Simulator-v6.1.2-win64.zip)
+[![Download](https://img.shields.io/badge/Download-v6.1.2%20Windows-2ea44f?logo=github)](https://github.com/LynViii/LTE-Control-Plane-Simulation/releases/download/v6.1.2/LTE-Control-Plane-Simulator-v6.1.2-win64.zip)
 
 一个面向 LTE Attach 控制流程学习、调试与故障分析的工程化仿真平台。项目使用 Python 模拟 AP、Modem 与 eNB/MME 之间的控制面交互，将 NAS、RRC、L2、L1 四个 Task、TCP 通信、计时器、故障注入、运行证据诊断以及 Security 模块串成完整运行链。
 
 > 当前版本：**v6.1.2**  
-> Windows x64 发布包：[直接下载](https://github.com/LiYuansheng0209/LTE-Control-Plane-Simulation/releases/download/v6.1.2/LTE-Control-Plane-Simulator-v6.1.2-win64.zip) · [查看 Release](https://github.com/LiYuansheng0209/LTE-Control-Plane-Simulation/releases/tag/v6.1.2)  
+> Windows x64 发布包：[直接下载](https://github.com/LynViii/LTE-Control-Plane-Simulation/releases/download/v6.1.2/LTE-Control-Plane-Simulator-v6.1.2-win64.zip) · [查看 Release](https://github.com/LynViii/LTE-Control-Plane-Simulation/releases/tag/v6.1.2)  
 > 项目使用简化 JSON 消息与网络侧模型，不需要真实基站、射频设备或 USIM，适合控制流程实验与软件联调。
 
 ## 项目展示
@@ -148,7 +148,7 @@ Attach 内 NAS Security 则在 Authentication 通过后建立安全上下文，�
 
 ## 测试与 CI
 
-仓库的 GitHub Actions 会在 push / pull request 时执行源码验证：
+仓库的 GitHub Actions 会在 push / pull request 时执行源码验证，覆盖 Ubuntu/Python 3.10、Ubuntu/Python 3.13 和 Windows/Python 3.13：
 
 ```powershell
 .\.venv\Scripts\python.exe devtools/validation/source_self_test.py
