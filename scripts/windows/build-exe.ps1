@@ -212,10 +212,13 @@ if (-not (Test-Path -LiteralPath $builtAgentExe)) { throw "PyInstaller did not p
 Write-Stage "Assembling release directory"
 Copy-Item -LiteralPath $builtMainExe -Destination $mainExe -Force
 Copy-Item -LiteralPath $builtAgentExe -Destination $agentExe -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot "docs\Windows构建与运行.md") -Destination (Join-Path $packageRoot "README.md") -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot "docs\WINDOWS_BUILD.md") -Destination (Join-Path $packageRoot "README.md") -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot "README.md") -Destination (Join-Path $packageRoot "PROJECT-README.md") -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot "docs\第三方依赖与许可.md") -Destination (Join-Path $packageRoot "THIRD_PARTY_NOTICES.md") -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot "docs\images\lan-mode-success.png") -Destination (Join-Path $packageRoot "LAN-mode-success.png") -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot "LICENSES\README.md") -Destination (Join-Path $packageRoot "THIRD_PARTY_NOTICES.md") -Force
+$lanEvidence = Join-Path $projectRoot "docs\images\lan-mode-success.png"
+if (Test-Path -LiteralPath $lanEvidence) {
+    Copy-Item -LiteralPath $lanEvidence -Destination (Join-Path $packageRoot "LAN-mode-success.png") -Force
+}
 Copy-Item -Path (Join-Path $projectRoot "LICENSES\*") -Destination $licenseRoot -Recurse -Force
 
 Write-Stage "Optional Authenticode signing"
@@ -231,8 +234,8 @@ foreach ($required in @(
     $mainExe,
     $agentExe,
     (Join-Path $packageRoot "README.md"),
+    (Join-Path $packageRoot "PROJECT-README.md"),
     (Join-Path $packageRoot "THIRD_PARTY_NOTICES.md"),
-    (Join-Path $packageRoot "LAN-mode-success.png"),
     (Join-Path $licenseRoot "proxy_tools-BSD.txt"),
     (Join-Path $licenseRoot "dependency-inventory.txt")
 )) {
