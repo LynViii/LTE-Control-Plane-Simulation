@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from lte_sim.control_plane.engine import EngineHooks, SimulatorEngine, build_enb_response
+from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.fault_injection.core import PRESETS
 from lte_sim.state import StateStore
 
@@ -14,10 +15,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def _run(tmp_path, preset: str):
     store = StateStore(tmp_path / f"{preset}.json", max_logs=1200)
-    store.set_custom_fault(dict(PRESETS[preset], timeout_ms=220))
+    timeout_ms = 220 if preset == "RRC_RESPONSE_TIMEOUT" else 1000
+    store.set_custom_fault(dict(PRESETS[preset], timeout_ms=timeout_ms))
+    network_context = NetworkControlPlaneContext()
     engine = SimulatorEngine(
         store,
-        EngineHooks(lambda req: build_enb_response(req, store.snapshot()["enb"])),
+        EngineHooks(lambda req: build_enb_response(req, store.snapshot()["enb"], network_context=network_context)),
         step_delay=0,
     )
     try:

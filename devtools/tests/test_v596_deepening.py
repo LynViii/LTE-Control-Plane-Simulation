@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from lte_sim.control_plane.engine import EngineHooks, SimulatorEngine, build_enb_response
+from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.fault_injection.core import PRESETS
 from lte_sim.security_engine.service import SecurityContext
 from lte_sim.state import StateStore
@@ -19,10 +20,12 @@ def read(path: str) -> str:
 
 def run_preset(tmp_path: Path, preset: str):
     store = StateStore(tmp_path / f"{preset}.json", max_logs=1600)
-    store.set_custom_fault(dict(PRESETS[preset], timeout_ms=220))
+    timeout_ms = 220 if preset == "RRC_RESPONSE_TIMEOUT" else 1000
+    store.set_custom_fault(dict(PRESETS[preset], timeout_ms=timeout_ms))
+    network_context = NetworkControlPlaneContext()
     engine = SimulatorEngine(
         store,
-        EngineHooks(lambda req: build_enb_response(req, store.snapshot()["enb"])),
+        EngineHooks(lambda req: build_enb_response(req, store.snapshot()["enb"], network_context=network_context)),
         step_delay=0,
     )
     try:
@@ -38,7 +41,7 @@ def run_preset(tmp_path: Path, preset: str):
 
 
 def test_v596_version_and_security_accuracy_ui():
-    assert read("VERSION").strip() == "6.0.4"
+    assert read("VERSION").strip() == "6.1.2"
     html = read("src/lte_sim/web/index.html")
     js = read("src/lte_sim/web/app.js")
     css = read("src/lte_sim/web/ui.css")
@@ -61,7 +64,7 @@ def test_security_selftest_returns_four_layer_verification_matrix():
     assert matrix["rfcKnownAnswer"]["status"] == "PASS"
     assert matrix["rfcKnownAnswer"]["passed"] == matrix["rfcKnownAnswer"]["total"] == 3
     assert matrix["coreStateBoundary"]["status"] == "PASS"
-    assert matrix["coreStateBoundary"]["passed"] == matrix["coreStateBoundary"]["total"] == 11
+    assert matrix["coreStateBoundary"]["passed"] == matrix["coreStateBoundary"]["total"] == 17
     assert matrix["referenceDifferential"]["status"] in {"PASS", "OPTIONAL"}
     assert matrix["udpEndToEnd"]["status"] == "SEPARATE"
 

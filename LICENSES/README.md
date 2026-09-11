@@ -4,4 +4,4 @@
 
 发布时，`scripts/build/collect-third-party-licenses.py` 会从构建环境已安装的 Python 分发包中收集 LICENSE、COPYING 和 NOTICE。`scripts/windows/build-exe.ps1` 在生成发布 ZIP 前执行这一步，并将收集结果放入发布包。
 
-SRTP 的协议代码位于 `src/lte_sim/security_engine/`；AES、HMAC 运算使用 `cryptography/OpenSSL`。`pylibsrtp` 仅用于可选的开发期对照测试。
+SRTP 的协议代码位于 `src/lte_sim/security_engine/`；AES、HMAC、CMAC 运算使用 `cryptography/OpenSSL`。`pylibsrtp` 仅用于可选的开发期对照测试。

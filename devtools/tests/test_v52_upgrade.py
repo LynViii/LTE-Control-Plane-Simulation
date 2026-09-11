@@ -2,6 +2,7 @@ from pathlib import Path
 import time
 
 from lte_sim.control_plane.engine import EngineHooks, SimulatorEngine, build_enb_response
+from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.fault_injection.core import PRESETS
 from lte_sim.security_engine.service import probe_security_core
 from lte_sim.security_engine.udp_lab import SrtpUdpLab
@@ -14,8 +15,14 @@ def read(rel):
 
 def run_fault(tmp_path, preset):
     store = StateStore(tmp_path / f"{preset}.json", max_logs=1000)
-    store.set_custom_fault(dict(PRESETS[preset], timeout_ms=220))
-    engine = SimulatorEngine(store, EngineHooks(lambda req: build_enb_response(req, store.snapshot()["enb"])), step_delay=0)
+    timeout_ms = 220 if preset == "RRC_RESPONSE_TIMEOUT" else 1000
+    store.set_custom_fault(dict(PRESETS[preset], timeout_ms=timeout_ms))
+    network_context = NetworkControlPlaneContext()
+    engine = SimulatorEngine(
+        store,
+        EngineHooks(lambda req: build_enb_response(req, store.snapshot()["enb"], network_context=network_context)),
+        step_delay=0,
+    )
     try:
         engine.start_attach()
         deadline = time.monotonic() + 5
@@ -26,7 +33,7 @@ def run_fault(tmp_path, preset):
         engine.close()
 
 def test_v52_version_and_clean_frontend_contract():
-    assert read("VERSION").strip() == "6.0.4"
+    assert read("VERSION").strip() == "6.1.2"
     assert not (ROOT / "src/lte_sim/desktop_app.py").exists()
     assert not (ROOT / "scripts/run-desktop.ps1").exists()
     assert "lte-sim-desktop" not in read("pyproject.toml")
@@ -102,5 +109,5 @@ def test_current_docs_follow_v53_consolidated_structure_without_obsolete_desktop
         assert (ROOT / "docs" / rel).is_file(), rel
     assert "run-desktop.ps1" not in read("docs/项目架构与源码结构.md")
     assert "Web 与 Windows EXE" in read("docs/学习内容.md")
-    assert "6.0.4" in read("packaging/version-info.txt")
-    assert "v6.0.4" in read("docs/第三方依赖与许可.md")
+    assert "6.1.2" in read("packaging/version-info.txt")
+    assert "v6.1.2" in read("docs/第三方依赖与许可.md")

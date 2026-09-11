@@ -19,7 +19,7 @@ def read(path: str) -> str:
 
 def test_version_sources_are_synchronized() -> None:
     project = tomllib.loads(read("pyproject.toml"))
-    assert __version__ == "6.0.4"
+    assert __version__ == "6.1.2"
     assert read("VERSION").strip() == __version__
     assert project["project"]["version"] == __version__
 

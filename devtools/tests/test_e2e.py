@@ -6,6 +6,7 @@ import socket
 import subprocess
 import shutil
 import sys
+import tempfile
 import time
 import unittest
 import urllib.error
@@ -56,9 +57,14 @@ class EndToEndTests(unittest.TestCase):
             "SOCKET_TIMEOUT": "0.8",
         })
         env["PYTHONPATH"] = str(ROOT / "src")
-        env["LTE_SIM_STATE_FILE"] = str(ROOT / "var" / "e2e-state.json")
-        cls.runs_dir = ROOT / "var" / "e2e-runs"
-        shutil.rmtree(cls.runs_dir, ignore_errors=True)
+        # Keep E2E runtime data outside the source tree.  A source checkout may
+        # be read-only (or mounted by CI/artifact tooling), and HTTP reset must
+        # not fail merely because ROOT/var is not writable.
+        cls.runtime_temp = tempfile.TemporaryDirectory(prefix="lte-e2e-")
+        cls.runtime_dir = Path(cls.runtime_temp.name)
+        cls.state_file = cls.runtime_dir / "e2e-state.json"
+        cls.runs_dir = cls.runtime_dir / "e2e-runs"
+        env["LTE_SIM_STATE_FILE"] = str(cls.state_file)
         env["LTE_SIM_RUNS_DIR"] = str(cls.runs_dir)
         cls.proc = subprocess.Popen(
             [sys.executable, "-m", "lte_sim.web_app"], cwd=ROOT, env=env,
@@ -84,8 +90,9 @@ class EndToEndTests(unittest.TestCase):
         except subprocess.TimeoutExpired:
             cls.proc.kill()
             cls.proc.wait(timeout=2)
-        (ROOT / "var" / "e2e-state.json").unlink(missing_ok=True)
+        cls.state_file.unlink(missing_ok=True)
         shutil.rmtree(cls.runs_dir, ignore_errors=True)
+        cls.runtime_temp.cleanup()
 
     def setUp(self):
         request_json(self.base + "/api/reset", method="POST")

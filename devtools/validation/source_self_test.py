@@ -25,6 +25,9 @@ SOURCE_TESTS = [
     "devtools/tests/test_v50_faults.py",
     "devtools/tests/test_v50_transport.py",
     "devtools/tests/test_v604_hardening.py",
+    "devtools/tests/test_v610_security_upgrade.py",
+    "devtools/tests/test_v611_security_hardening.py",
+    "devtools/tests/test_v612_review_hardening.py",
     "devtools/tests/test_windows_firewall.py",
 ]
 
@@ -81,6 +84,7 @@ def main() -> int:
         temp = Path(td)
         env = os.environ.copy()
         env["PYTHONDONTWRITEBYTECODE"] = "1"
+        env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
         env["PYTHONPATH"] = str(ROOT / "src")
         try:
             run([sys.executable, "-m", "compileall", "-q", str(ROOT / "src"), str(ROOT / "devtools" / "tests")],

@@ -7,9 +7,9 @@ def read(rel: str) -> str:
 
 
 def test_v58_version():
-    assert read("VERSION").strip() == "6.0.4"
-    assert 'version = "6.0.4"' in read("pyproject.toml")
-    assert '__version__ = "6.0.4"' in read("src/lte_sim/version.py")
+    assert read("VERSION").strip() == "6.1.2"
+    assert 'version = "6.1.2"' in read("pyproject.toml")
+    assert '__version__ = "6.1.2"' in read("src/lte_sim/version.py")
 
 
 def test_v58_attach_observability_strip_is_present():

@@ -13,10 +13,10 @@ def read(rel: str) -> str:
 
 
 def test_v601_version_and_release_docs():
-    assert read("VERSION").strip() == "6.0.4"
-    assert 'version = "6.0.4"' in read("pyproject.toml")
-    assert '__version__ = "6.0.4"' in read("src/lte_sim/version.py")
-    assert "## v6.0.4" in read("docs/版本记录.md")
+    assert read("VERSION").strip() == "6.1.2"
+    assert 'version = "6.1.2"' in read("pyproject.toml")
+    assert '__version__ = "6.1.2"' in read("src/lte_sim/version.py")
+    assert "## v6.1.2" in read("docs/版本记录.md")
 
 
 def test_standalone_demo_is_real_raw_bytes_backend_boundary():

@@ -8,6 +8,7 @@ from pathlib import Path
 from lte_sim.at import ATParser
 from lte_sim.models import FLOW_STEPS
 from lte_sim.control_plane.engine import EngineHooks, SimulatorEngine, build_enb_response
+from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.state import StateStore, default_state
 from lte_sim.runtime.taskbus import TaskBus
 
@@ -212,8 +213,15 @@ class EngineTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.store = StateStore(Path(self.temp.name) / "state.json", max_logs=300)
 
+        self.network_context = NetworkControlPlaneContext()
+
         def fake_network(request):
-            return build_enb_response(request, self.store.snapshot()["enb"], 0.01)
+            return build_enb_response(
+                request,
+                self.store.snapshot()["enb"],
+                0.01,
+                network_context=self.network_context,
+            )
 
         self.engine = SimulatorEngine(self.store, EngineHooks(fake_network), step_delay=0.002)
 

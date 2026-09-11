@@ -3,6 +3,7 @@ import time
 import pytest
 
 from lte_sim.control_plane.engine import EngineHooks, SimulatorEngine, build_enb_response
+from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.fault_injection.core import FaultConfig, FIELD_HELP
 from lte_sim.state import StateStore
 
@@ -14,8 +15,8 @@ def read(rel: str) -> str:
 
 def test_v591_version_startup_is_compact_not_maximized():
     source = read("src/lte_sim/startup_ui.py")
-    assert read("VERSION").strip() == "6.0.4"
-    assert 'version = "6.0.4"' in read("pyproject.toml")
+    assert read("VERSION").strip() == "6.1.2"
+    assert 'version = "6.1.2"' in read("pyproject.toml")
     assert 'root.state("zoomed")' not in source
     assert 'width=1160, height=760' in source
     assert '启动摘要' not in source
@@ -47,7 +48,12 @@ def test_v591_string_literal_42_is_valid_string_but_numeric_42_is_not():
 
 def test_v591_stop_attach_is_distinct_from_reset(tmp_path):
     store = StateStore(tmp_path / 'state.json')
-    engine = SimulatorEngine(store, EngineHooks(lambda req: build_enb_response(req, store.snapshot()['enb'])), step_delay=0.12)
+    network_context = NetworkControlPlaneContext()
+    engine = SimulatorEngine(
+        store,
+        EngineHooks(lambda req: build_enb_response(req, store.snapshot()['enb'], network_context=network_context)),
+        step_delay=0.12,
+    )
     try:
         ok, _ = engine.start_attach()
         assert ok is True

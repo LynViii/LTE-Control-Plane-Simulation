@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import copy
+import hashlib
 import queue
 import threading
 import time
@@ -13,6 +15,7 @@ from ..fault_injection.core import FaultInjector, CATALOG, PRESETS
 from ..state import StateStore, utc_now
 from ..runtime.taskbus import TaskBus
 from ..security_engine.service import SecurityContext
+from ..security_engine.nas_security import NasPlainPduCodec, NasSecurityContext, NasSecurityError, UPLINK, DOWNLINK
 from ..diagnostics.engine import FailureDiagnosisEngine
 from ..runtime.timers import TimerManager
 from ..runtime.clock import RealtimeClock, SimulationClock
@@ -556,6 +559,29 @@ class SimulatorEngine:
         request_id=uuid4().hex[:10]
         payload={**copy.deepcopy(message),'requestId':request_id,'transactionId':ctx.transaction_id,
                  'correlation_id':ctx.correlation_id}
+        # v6.1: once NAS Security Mode is active, selected NAS messages carry a
+        # real byte-array security envelope (COUNT + EEA2 + EIA2) in addition
+        # to the teaching-model JSON fields. Fault injection acts after this
+        # construction, so a custom fault can corrupt the wire representation.
+        if message.get('type') in {'NAS_SECURITY_MODE_COMPLETE','NAS_ATTACH_COMPLETE'}:
+            secure = self.security.protect_nas_uplink(
+                ctx.transaction_id, message['type'],
+                {k:v for k,v in message.items() if k not in {'type','nasSecurityPduB64','nasSecurityMeta'}},
+                ciphered=True,
+            )
+            protected_pdu = secure['protectedPdu']
+            payload['nasSecurityPduB64'] = base64.b64encode(protected_pdu).decode('ascii')
+            last = secure['state'].get('last') or {}
+            payload['nasSecurityMeta'] = {
+                'profile':'EPS_NAS_EEA2_EIA2', 'direction':'UPLINK',
+                'count':last.get('count'), 'sequence':last.get('sequence'), 'ciphered':last.get('ciphered'),
+                'macHex':last.get('macHex'), 'plainPduSha256':last.get('plainSha256'),
+                'protectedPduSha256':last.get('protectedSha256'), 'keyId':secure['state'].get('keyId'),
+            }
+            self._event(ctx,'NAS_SECURITY_PDU_PROTECTED',primitive=message['type'],direction='UPLINK',
+                        count=last.get('count'),sequence=last.get('sequence'),cipher='EEA2',integrity='EIA2',
+                        macHex=last.get('macHex'),plainPduSha256=last.get('plainSha256'),
+                        protectedPduSha256=last.get('protectedSha256'),keyId=secure['state'].get('keyId'))
         payload,delay,copies,evidence=ctx.injector.intercept(payload,layer='socket',stage=stage,
             primitive=message['type'],correlation_id=ctx.correlation_id,transaction_id=ctx.transaction_id)
         if delay and ctx.operation_stop.wait(delay): raise AttachCancelled('Socket delay cancelled')
@@ -612,6 +638,36 @@ class SimulatorEngine:
                     payloadSha256=(rx_transport or {}).get('payloadSha256'),
                     sizeBytes=(rx_transport or {}).get('sizeBytes'), rttMs=rtt,
                     source='eNB/MME', destination='Modem')
+        if response.get('kind') in {'NAS_SECURITY_MODE_COMMAND','NAS_ATTACH_ACCEPT'}:
+            encoded_pdu = response.get('nasSecurityPduB64')
+            expected_ciphered = response.get('kind') == 'NAS_ATTACH_ACCEPT'
+            if not isinstance(encoded_pdu, str) or not encoded_pdu.strip():
+                exc = NasSecurityError('NAS_SECURITY_PDU_MISSING', 'Required protected downlink NAS PDU is missing or empty')
+                self._event(ctx,'NAS_SECURITY_PDU_FAILED',primitive=response.get('kind'),direction='DOWNLINK',
+                            root_cause=exc.code,actual='missing/empty nasSecurityPduB64')
+                raise ProtocolFailure(
+                    f'NAS security verification failed: {exc}', stage, root_cause=exc.code,
+                    primitive=response.get('kind'), field='nasSecurityPduB64',
+                    expected='required non-empty protected NAS PDU', actual='missing/empty',
+                )
+            try:
+                protected_pdu = base64.b64decode(encoded_pdu, validate=True)
+                verified = self.security.verify_nas_downlink(
+                    ctx.transaction_id, protected_pdu, expected_kind=response['kind'], expected_ciphered=expected_ciphered
+                )
+                last = verified['state'].get('last') or {}
+                self._event(ctx,'NAS_SECURITY_PDU_VERIFIED',primitive=response['kind'],direction='DOWNLINK',
+                            count=last.get('count'),sequence=last.get('sequence'),cipher='EEA2' if last.get('ciphered') else 'NULL_FOR_SMC',
+                            integrity='EIA2',macHex=last.get('macHex'),plainPduSha256=last.get('plainSha256'),
+                            protectedPduSha256=last.get('protectedSha256'),keyId=verified['state'].get('keyId'),
+                            recoveredFields=copy.deepcopy(verified.get('fields') or {}))
+                response['nasSecurityVerified'] = True
+                response['nasSecurityRecovered'] = copy.deepcopy(verified.get('fields') or {})
+            except (ValueError, NasSecurityError) as exc:
+                self._event(ctx,'NAS_SECURITY_PDU_FAILED',primitive=response.get('kind'),direction='DOWNLINK',
+                            root_cause=getattr(exc,'code','NAS_SECURITY_PDU_INVALID'),actual=str(exc))
+                raise ProtocolFailure(f'NAS security verification failed: {exc}',stage,root_cause=getattr(exc,'code','NAS_SECURITY_PDU_INVALID'),
+                                      primitive=response.get('kind'),field='nasSecurityPduB64',expected='valid EIA2/EEA2 protected NAS PDU with stage-required cipher mode',actual='verification failed')
         decision = response.get('networkDecision') if isinstance(response, dict) else None
         if isinstance(decision, dict) and not decision.get('peerEvidenceRecorded'):
             event_name = 'NETWORK_AUTH_DECISION' if stage == 'authentication' else 'NETWORK_CONTROL_DECISION'
@@ -806,6 +862,51 @@ def _build_enb_response_locked(request, base_enb, socket_timeout=2.0, net_ctx=No
     def ctx_check(name, field, expected, actual, passed):
         return {"name": name, "field": field, "expected": expected, "actual": actual, "passed": bool(passed)}
 
+    def verify_nas_uplink(expected_kind: str, *, expected_ciphered: bool = True):
+        """Verify/decrypt one UE->MME protected NAS PDU before policy state changes.
+
+        The stage-required protection mode is checked before receiver COUNT/replay
+        state is committed, so a valid-MAC integrity-only packet cannot satisfy a
+        stage that negotiated EEA2 ciphering.
+        """
+        if net_ctx is None:
+            return True, {}, {"mode":"STATELESS_TEST_BYPASS"}
+        if net_ctx.nas_security_context is None:
+            return False, {}, {"code":"NAS_SECURITY_CONTEXT_MISSING", "detail":"network NAS security context not established"}
+        encoded = request.get("nasSecurityPduB64")
+        if not isinstance(encoded, str) or not encoded:
+            return False, {}, {"code":"NAS_SECURITY_PDU_MISSING", "detail":"security-protected NAS PDU is missing"}
+        try:
+            protected = base64.b64decode(encoded, validate=True)
+            plain = net_ctx.nas_security_context.unprotect(
+                protected, direction=UPLINK, expected_kind=expected_kind, expected_ciphered=expected_ciphered
+            )
+            kind_name, fields = NasPlainPduCodec.decode(plain)
+            state = net_ctx.nas_security_context.public_state()
+            last = state.get("last") or {}
+            return True, fields, {
+                "code":"PASS", "kind":kind_name, "count":last.get("count"), "sequence":last.get("sequence"),
+                "ciphered":last.get("ciphered"), "macHex":last.get("macHex"),
+                "plainPduSha256":last.get("plainSha256"), "protectedPduSha256":last.get("protectedSha256"),
+                "keyId":state.get("keyId"),
+            }
+        except (ValueError, NasSecurityError) as exc:
+            return False, {}, {"code":getattr(exc,"code","NAS_SECURITY_PDU_INVALID"), "detail":str(exc)}
+
+    def attach_nas_downlink(response: dict, kind_name: str, fields: dict, *, ciphered: bool) -> None:
+        if net_ctx is None or net_ctx.nas_security_context is None or response.get("network_reject"):
+            return
+        plain = NasPlainPduCodec.encode(kind_name, fields)
+        protected = net_ctx.nas_security_context.protect(plain, direction=DOWNLINK, ciphered=ciphered)
+        state = net_ctx.nas_security_context.public_state(); last = state.get("last") or {}
+        response["nasSecurityPduB64"] = base64.b64encode(protected).decode("ascii")
+        response["nasSecurityMeta"] = {
+            "profile":"EPS_NAS_EEA2_EIA2", "direction":"DOWNLINK", "count":last.get("count"),
+            "sequence":last.get("sequence"), "ciphered":last.get("ciphered"), "macHex":last.get("macHex"),
+            "plainPduSha256":last.get("plainSha256"), "protectedPduSha256":last.get("protectedSha256"),
+            "keyId":state.get("keyId"), "payloadCodec":"project-simplified-inner-NAS",
+        }
+
     def decision_response(*, decision_type, rule, checks, success_response, reject_kind, cause_map):
         failed = next((item for item in checks if not item.get("passed")), None)
         layer_map = {
@@ -992,19 +1093,36 @@ def _build_enb_response_locked(request, base_enb, socket_timeout=2.0, net_ctx=No
                 net_ctx.authentication_state = "REJECTED"
         elif net_ctx is not None:
             net_ctx.authentication_state = "AUTHENTICATED"
+            if net_ctx.nas_security_context is not None:
+                net_ctx.nas_security_context.close()
+            net_ctx.nas_security_context = NasSecurityContext.for_transaction(net_ctx.transaction_id)
+            net_ctx.security_state = "COMMAND_SENT"
+            # TS 24.301 Security Mode Command uses the new security context for
+            # integrity protection but is not ciphered.
+            attach_nas_downlink(response, "NAS_SECURITY_MODE_COMMAND", {
+                "auth_result":"SUCCESS", "integrity":"EIA2", "cipher":"EEA2"
+            }, ciphered=False)
 
     elif kind == "NAS_SECURITY_MODE_COMPLETE":
         ue_id = request.get("ueId", "UE-001")
         integrity = request.get("integrity")
         cipher = request.get("cipher")
+        secure_ok, secure_fields, secure_meta = verify_nas_uplink("NAS_SECURITY_MODE_COMPLETE")
         checks = [ctx_check("UE Context", "ueId", "UE-001", ue_id, ue_id == "UE-001")]
         if net_ctx is not None:
             checks.append(ctx_check("Authentication State", "network.authenticationState", "AUTHENTICATED",
                                     net_ctx.authentication_state, net_ctx.authentication_state == "AUTHENTICATED"))
+            checks.append(ctx_check("NAS EIA2/EEA2 字节保护", "nasSecurityPduB64", "integrity verified + cipher recovered",
+                                    secure_meta.get("code"), secure_ok))
         checks += [
             ctx_check("Integrity 算法", "integrity", "EIA2", integrity, integrity == "EIA2"),
             ctx_check("Cipher 算法", "cipher", "EEA2", cipher, cipher == "EEA2"),
         ]
+        if net_ctx is not None and secure_ok:
+            checks.append(ctx_check("保护后 PDU 内容", "nasSecurity.recoveredAlgorithms",
+                                    {"integrity":"EIA2","cipher":"EEA2"},
+                                    {"integrity":secure_fields.get("integrity"),"cipher":secure_fields.get("cipher")},
+                                    secure_fields.get("integrity") == "EIA2" and secure_fields.get("cipher") == "EEA2"))
         response = decision_response(
             decision_type="NAS Security Policy 判定",
             rule="UE authenticated AND Security Mode Complete confirms EIA2 AND EEA2",
@@ -1012,23 +1130,31 @@ def _build_enb_response_locked(request, base_enb, socket_timeout=2.0, net_ctx=No
             success_response={"kind": "NAS_ATTACH_ACCEPT", "guti": "GUTI-46001-0001-01", "defaultBearer": 5},
             reject_kind="NAS_SECURITY_MODE_REJECT",
             cause_map={"ueId": "UE_CONTEXT_UNKNOWN", "network.authenticationState": "AUTHENTICATION_NOT_COMPLETE",
+                       "nasSecurityPduB64": "NAS_SECURITY_PROTECTION_FAILED",
+                       "nasSecurity.recoveredAlgorithms": "NAS_SECURITY_CONTENT_MISMATCH",
                        "integrity": "INTEGRITY_ALGORITHM_MISMATCH", "cipher": "CIPHER_ALGORITHM_MISMATCH"},
         )
         if net_ctx is not None:
+            response["nasSecurityVerification"] = copy.deepcopy(secure_meta)
             if response.get("network_reject"):
                 net_ctx.security_state = "REJECTED"
             else:
                 net_ctx.integrity, net_ctx.cipher = str(integrity), str(cipher)
                 net_ctx.security_state = "ACTIVE"
                 net_ctx.attach_state = "ACCEPTED"
+                attach_nas_downlink(response, "NAS_ATTACH_ACCEPT", {
+                    "guti":response.get("guti"), "defaultBearer":response.get("defaultBearer")
+                }, ciphered=True)
 
     elif kind == "NAS_ATTACH_COMPLETE":
         ue_id = request.get("ueId", "UE-001")
+        secure_ok, secure_fields, secure_meta = verify_nas_uplink("NAS_ATTACH_COMPLETE")
         checks = [ctx_check("UE Context", "ueId", "UE-001", ue_id, ue_id == "UE-001")]
         if net_ctx is not None:
             checks += [
                 ctx_check("Security Context", "network.securityState", "ACTIVE", net_ctx.security_state, net_ctx.security_state == "ACTIVE"),
                 ctx_check("Attach Context", "network.attachState", "ACCEPTED", net_ctx.attach_state, net_ctx.attach_state == "ACCEPTED"),
+                ctx_check("NAS EIA2/EEA2 字节保护", "nasSecurityPduB64", "integrity verified + cipher recovered", secure_meta.get("code"), secure_ok),
             ]
         response = decision_response(
             decision_type="Attach Complete 上下文判定",
@@ -1037,9 +1163,11 @@ def _build_enb_response_locked(request, base_enb, socket_timeout=2.0, net_ctx=No
             success_response={"kind": "NAS_ATTACH_COMPLETE_ACK"},
             reject_kind="NAS_ATTACH_COMPLETE_REJECT",
             cause_map={"ueId": "UE_CONTEXT_UNKNOWN", "network.securityState": "SECURITY_CONTEXT_NOT_ACTIVE",
-                       "network.attachState": "ATTACH_CONTEXT_NOT_ACCEPTED"},
+                       "network.attachState": "ATTACH_CONTEXT_NOT_ACCEPTED",
+                       "nasSecurityPduB64": "NAS_SECURITY_PROTECTION_FAILED"},
         )
         if net_ctx is not None:
+            response["nasSecurityVerification"] = copy.deepcopy(secure_meta)
             net_ctx.attach_state = "ATTACHED" if not response.get("network_reject") else "REJECTED"
     else:
         response = {"kind": "ERROR", "message": "Unsupported request"}

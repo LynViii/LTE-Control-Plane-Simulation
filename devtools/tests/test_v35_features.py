@@ -9,6 +9,7 @@ import pytest
 from lte_sim.at import ATParser
 from lte_sim.diagnostics.engine import FailureDiagnosisEngine
 from lte_sim.control_plane.engine import EngineHooks, SimulatorEngine, build_enb_response
+from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.state import StateStore, default_state
 from lte_sim.runtime.timers import TimerManager
 from lte_sim.runtime.trace import normalize_log_entry, summarize_trace
@@ -227,7 +228,10 @@ def wait_finished(store: StateStore, timeout: float = 5.0) -> dict:
 def make_engine(tmp_path: Path, scenario: str = "NORMAL"):
     store = make_store(tmp_path)
     store.set_scenario(scenario)
-    hook = lambda payload: build_enb_response(payload, store.snapshot()["enb"], socket_timeout=0.05)
+    network_context = NetworkControlPlaneContext()
+    hook = lambda payload: build_enb_response(
+        payload, store.snapshot()["enb"], socket_timeout=0.05, network_context=network_context
+    )
     engine = SimulatorEngine(store, EngineHooks(network_request=hook), step_delay=0.002)
     return store, engine
 
@@ -273,6 +277,6 @@ def test_v35_engine_failure_generates_diagnosis(tmp_path, scenario, code):
 
 def test_v35_default_state_version_and_sections():
     state = default_state()
-    assert state["version"] == "6.0.4"
+    assert state["version"] == "6.1.2"
     for key in ("protocolTrace", "packetTrace", "atHistory", "timers", "diagnosis", "traceSummary"):
         assert key in state

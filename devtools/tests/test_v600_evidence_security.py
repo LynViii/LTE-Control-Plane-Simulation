@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import struct
+import base64
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,7 @@ import pytest
 from lte_sim.control_plane.engine import build_enb_response
 from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.diagnostics.engine import FailureDiagnosisEngine
-from lte_sim.security_engine import StandaloneSrtpModule, SrtpError
+from lte_sim.security_engine import StandaloneSrtpModule, SrtpError, NasSecurityContext, NasPlainPduCodec, UPLINK, DOWNLINK
 from lte_sim.state import StateStore, default_state
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,9 +28,9 @@ def _rtp(seq: int, payload: bytes = b"v600-srtp") -> bytes:
 
 
 def test_version_and_standalone_cli_contract():
-    assert (ROOT / "VERSION").read_text().strip() == "6.0.4"
+    assert (ROOT / "VERSION").read_text().strip() == "6.1.2"
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'version = "6.0.4"' in pyproject
+    assert 'version = "6.1.2"' in pyproject
     assert 'lte-sim-security = "lte_sim.security_engine.cli:main"' in pyproject
     assert "## v6.0.0" in (ROOT / "docs/版本记录.md").read_text(encoding="utf-8")
     assert "## v5.9.7" in (ROOT / "docs/版本记录.md").read_text(encoding="utf-8")
@@ -70,9 +71,21 @@ def test_network_context_requires_prior_runtime_messages_and_advances_state():
 
     auth = build_enb_response(_request("NAS_AUTHENTICATION_RESPONSE", res="SIMULATED_RES", auth_result="SUCCESS"), base, network_context=context)
     assert auth["networkContext"]["authenticationState"] == "AUTHENTICATED"
-    sec = build_enb_response(_request("NAS_SECURITY_MODE_COMPLETE", integrity="EIA2", cipher="EEA2"), base, network_context=context)
+    # v6.1: the UE actually verifies the EIA2-protected Security Mode Command,
+    # then sends EEA2+EIA2 protected NAS PDUs back to the MME.
+    ue_nas = NasSecurityContext.for_transaction("tx-v600")
+    smc_plain = ue_nas.unprotect(base64.b64decode(auth["nasSecurityPduB64"]), direction=DOWNLINK, expected_kind="NAS_SECURITY_MODE_COMMAND")
+    assert NasPlainPduCodec.decode(smc_plain)[0] == "NAS_SECURITY_MODE_COMMAND"
+    smc_complete = ue_nas.protect(
+        NasPlainPduCodec.encode("NAS_SECURITY_MODE_COMPLETE", {"integrity":"EIA2", "cipher":"EEA2"}),
+        direction=UPLINK, ciphered=True,
+    )
+    sec = build_enb_response(_request("NAS_SECURITY_MODE_COMPLETE", integrity="EIA2", cipher="EEA2", nasSecurityPduB64=base64.b64encode(smc_complete).decode("ascii")), base, network_context=context)
     assert sec["networkContext"]["securityState"] == "ACTIVE"
-    done = build_enb_response(_request("NAS_ATTACH_COMPLETE"), base, network_context=context)
+    attach_accept = ue_nas.unprotect(base64.b64decode(sec["nasSecurityPduB64"]), direction=DOWNLINK, expected_kind="NAS_ATTACH_ACCEPT")
+    assert NasPlainPduCodec.decode(attach_accept)[0] == "NAS_ATTACH_ACCEPT"
+    attach_complete = ue_nas.protect(NasPlainPduCodec.encode("NAS_ATTACH_COMPLETE", {}), direction=UPLINK, ciphered=True)
+    done = build_enb_response(_request("NAS_ATTACH_COMPLETE", nasSecurityPduB64=base64.b64encode(attach_complete).decode("ascii")), base, network_context=context)
     assert done["networkContext"]["attachState"] == "ATTACHED"
 
 
@@ -156,7 +169,7 @@ def test_actual_tcp_fault_run_produces_peer_hash_context_and_blind_verdict(tmp_p
     app = SimulatorApplication(settings)
     try:
         app.start(block=False, enable_http=False)
-        app.store.set_custom_fault(dict(PRESETS["AUTH_NETWORK_REJECT"], timeout_ms=450))
+        app.store.set_custom_fault(dict(PRESETS["AUTH_NETWORK_REJECT"], timeout_ms=1000))
         assert send_at_line(settings.host, settings.ap_modem_port, "AT+CFUN=1", 2) == "OK"
         deadline = time.monotonic() + 5
         state = app.store.snapshot()

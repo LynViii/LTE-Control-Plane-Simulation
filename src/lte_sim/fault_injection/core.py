@@ -76,8 +76,8 @@ SOCKET_FIELDS = {
  'rrc_complete': {'type':str,'ueId':str,'transactionIdentifier':int},
  'nas_attach_request': {'type':str,'ueId':str,'attachType':str},
  'authentication': {'type':str,'ueId':str,'auth_result':str,'res':str},
- 'security_mode': {'type':str,'ueId':str,'integrity':str,'cipher':str},
- 'attach_complete': {'type':str,'ueId':str},
+ 'security_mode': {'type':str,'ueId':str,'integrity':str,'cipher':str,'nasSecurityPduB64':str},
+ 'attach_complete': {'type':str,'ueId':str,'nasSecurityPduB64':str},
 }
 
 # Human-readable help for the expert fault editor.  This metadata describes the
@@ -114,6 +114,7 @@ FIELD_HELP = {
     'preambleIndex': '随机接入 Preamble 索引，整数。',
     'cause': 'RRC Connection Request 的建立原因。',
     'res': 'UE 上报给网络侧的鉴权响应 RES；网络侧会与 XRES 比较。',
+    'nasSecurityPduB64': 'v6.1 实际 NAS 安全字节包（Base64）；可修改以验证 EIA2 完整性失败不会推进 NAS COUNT/Replay 状态。',
 }
 SOCKET_EXPECTED = {stage: dict(values) for stage, values in SOCKET_EXAMPLES.items()}
 
@@ -137,7 +138,7 @@ SOCKET_SUGGESTIONS['rrc_connection'].update({'ueId':'UE-999','cause':'unsupporte
 SOCKET_SUGGESTIONS['rrc_complete'].update({'ueId':'UE-999','transactionIdentifier':7})
 SOCKET_SUGGESTIONS['nas_attach_request'].update({'ueId':'UE-999','attachType':'UNSUPPORTED_ATTACH'})
 SOCKET_SUGGESTIONS['authentication'].update({'ueId':'UE-999','auth_result':'REJECT','res':'INVALID_RES'})
-SOCKET_SUGGESTIONS['security_mode'].update({'ueId':'UE-999','integrity':'EIA0','cipher':'EEA0'})
+SOCKET_SUGGESTIONS['security_mode'].update({'ueId':'UE-999','integrity':'EIA0','cipher':'EEA0','nasSecurityPduB64':'AAAA'})
 SOCKET_SUGGESTIONS['attach_complete'].update({'ueId':'UE-999'})
 
 TYPES = {'MODIFY_FIELD','DELAY','DROP','DUPLICATE','TIMER_TIMEOUT','SOCKET_DELAY','SOCKET_DROP'}

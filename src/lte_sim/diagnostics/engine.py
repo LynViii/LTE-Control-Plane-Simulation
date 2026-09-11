@@ -191,7 +191,67 @@ class FailureDiagnosisEngine:
         validation = next((e for e in reversed(related) if e.get("event") == "VALIDATION_FAILED"), None)
         timer_expiry = next((e for e in reversed(related) if e.get("event") == "TIMER_EXPIRED"), None)
         decision_events = {"NETWORK_AUTH_DECISION", "NETWORK_CONTROL_DECISION", "UE_SYSTEM_INFO_DECISION", "CONTROL_PLANE_DELIVERY_DECISION"}
-        network_decision = next((e for e in reversed(related) if e.get("event") in decision_events), None)
+        # Prefer the decision that actually stopped the transaction.  A previous
+        # ACCEPT from RRC/RA can share the same transaction and must never mask
+        # a later REJECT/DROP if a recorder omits or changes correlation metadata.
+        # This also makes diagnosis stable when runtime events are imported from
+        # LAN/archive sources and correlation IDs are partially missing.
+        failed_decisions = [
+            e for e in related
+            if e.get("event") in decision_events and e.get("decision") in {"REJECT", "DROP"}
+        ]
+        if not failed_decisions:
+            failed_decisions = [
+                e for e in events
+                if e.get("event") in decision_events
+                and e.get("decision") in {"REJECT", "DROP"}
+                and (not step or e.get("step") == step)
+            ]
+        if not failed_decisions:
+            failed_decisions = [
+                e for e in events
+                if e.get("event") in decision_events and e.get("decision") in {"REJECT", "DROP"}
+            ]
+        # A failed transaction must never surface an earlier ACCEPT as its
+        # primary network_decision.  If the current failing correlation has no
+        # REJECT/DROP decision, leave this field empty and let Timer/Socket/
+        # Validation evidence describe the failure instead.  The optional
+        # SOCKET_RX recovery below can still restore a missing embedded failure
+        # decision from the actual received response.
+        network_decision = failed_decisions[-1] if failed_decisions else None
+        network_decision_source = "runtime_event" if network_decision else None
+        # The explicit NETWORK_*_DECISION mirror is convenient for the UI, but
+        # the authoritative wire observation is also preserved inside SOCKET_RX.
+        # If the mirror is missing (for example after a compact LAN snapshot or
+        # an interrupted recorder), recover the same structured decision from
+        # the received response rather than falling back to an older ACCEPT.
+        # This keeps diagnosis evidence-driven without requiring Scenario/FaultConfig.
+        if not network_decision or network_decision.get("decision") not in {"REJECT", "DROP"}:
+            socket_candidates = list(related) + [
+                e for e in events
+                if e not in related and (not step or e.get("step") == step)
+            ]
+            for socket_event in reversed(socket_candidates):
+                if socket_event.get("event") != "SOCKET_RX":
+                    continue
+                response = socket_event.get("actual")
+                embedded = response.get("networkDecision") if isinstance(response, dict) else None
+                if not isinstance(embedded, dict):
+                    continue
+                if embedded.get("decision") not in {"REJECT", "DROP"}:
+                    continue
+                recovered = dict(embedded)
+                recovered.setdefault("time", socket_event.get("time"))
+                recovered.setdefault("correlation_id", socket_event.get("correlation_id"))
+                recovered.setdefault("step", socket_event.get("step"))
+                recovered.setdefault("primitive", (embedded.get("inputMessage") or {}).get("type"))
+                recovered.setdefault(
+                    "event",
+                    "NETWORK_AUTH_DECISION" if socket_event.get("step") == "authentication" else "NETWORK_CONTROL_DECISION",
+                )
+                network_decision = recovered
+                network_decision_source = "socket_rx_embedded"
+                break
 
         cause = validation or socket_drop or socket_timeout or decisive
         root = cause.get("root_cause") or cause.get("event") or "INSUFFICIENT_EVIDENCE"
@@ -388,6 +448,19 @@ class FailureDiagnosisEngine:
         }]
         observed_events = [e for e in events if e.get("event") != "FAULT_INJECTED"]
         verdict_status = "INSUFFICIENT_EVIDENCE" if root == "INSUFFICIENT_EVIDENCE" else "DETERMINED"
+        diagnosis_selection = {
+            "decisiveEvent": decisive.get("event") or None,
+            "decisiveCorrelationId": corr,
+            "timerExpired": bool(timer_expiry),
+            "socketDrop": bool(socket_drop),
+            "socketTimeout": bool(socket_timeout),
+            "validationFailed": bool(validation),
+            "networkDecisionSource": network_decision_source,
+            "selectedDecisionEvent": (network_decision or {}).get("event"),
+            "selectedDecision": (network_decision or {}).get("decision"),
+            "selectedRejectCause": (network_decision or {}).get("rejectCause"),
+        }
+
         diagnosis_input = {
             "mode": "RUNTIME_EVIDENCE_ONLY" if blind else "RUNTIME_EVIDENCE",
             "evidencePolicy": "BLIND_RUNTIME_FACTS_ONLY" if blind else "STANDARD_RUNTIME_WITH_INJECTION_EVIDENCE",
@@ -440,7 +513,8 @@ class FailureDiagnosisEngine:
             scenarioNote=("证据隔离复算：Scenario/FaultConfig 未提供，FAULT_INJECTED 事件已排除" if blind
                           else ("普通诊断：Scenario/FaultConfig 未作为输入；运行事件中的 FAULT_INJECTED 可作为证据层使用" if fault
                                 else "普通诊断：未检测到故障注入记录；按运行事实定位")),
-            diagnosisInput=diagnosis_input, diagnosticVerdict=diagnostic_verdict,
+            diagnosisInput=diagnosis_input, diagnosisSelection=diagnosis_selection,
+            diagnosticVerdict=diagnostic_verdict,
             runtimeReplay=runtime_replay, blind=bool(blind),
             recoveryHint=suggested, traceTail=related[-6:], message=message,
         )

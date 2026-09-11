@@ -12,6 +12,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..security_engine.nas_security import NasSecurityContext
+
 
 @dataclass
 class _TransactionContext:
@@ -29,6 +31,7 @@ class _TransactionContext:
     integrity: str | None = None
     cipher: str | None = None
     security_state: str = "IDLE"
+    nas_security_context: NasSecurityContext | None = field(default=None, repr=False)
     last_message: str | None = None
     message_count: int = 0
 
@@ -48,6 +51,7 @@ class _TransactionContext:
             "integrity": self.integrity,
             "cipher": self.cipher,
             "securityState": self.security_state,
+            "nasSecurity": self.nas_security_context.public_state() if self.nas_security_context is not None else None,
             "lastMessage": self.last_message,
             "messageCount": self.message_count,
         }
@@ -82,7 +86,9 @@ class NetworkControlPlaneContext:
                 self._order.append(key)
                 while len(self._order) > self.max_transactions:
                     old = self._order.pop(0)
-                    self._transactions.pop(old, None)
+                    stale = self._transactions.pop(old, None)
+                    if stale is not None and stale.nas_security_context is not None:
+                        stale.nas_security_context.close()
             ctx.last_message = str(request.get("type") or "UNKNOWN")
             ctx.message_count += 1
             yield ctx
@@ -97,7 +103,9 @@ class NetworkControlPlaneContext:
                 self._order.append(key)
                 while len(self._order) > self.max_transactions:
                     old = self._order.pop(0)
-                    self._transactions.pop(old, None)
+                    stale = self._transactions.pop(old, None)
+                    if stale is not None and stale.nas_security_context is not None:
+                        stale.nas_security_context.close()
             ctx.last_message = str(request.get("type") or "UNKNOWN")
             ctx.message_count += 1
             return ctx
@@ -117,5 +125,8 @@ class NetworkControlPlaneContext:
 
     def reset(self) -> None:
         with self._lock:
+            for ctx in self._transactions.values():
+                if ctx.nas_security_context is not None:
+                    ctx.nas_security_context.close()
             self._transactions.clear()
             self._order.clear()

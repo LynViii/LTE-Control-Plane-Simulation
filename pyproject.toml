@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lte-control-plane-sim"
-version = "6.0.4"
+version = "6.1.2"
 description = "LTE control-plane Attach engineering simulator with Web UI and packaged Windows EXE"
 readme = "README.md"
 requires-python = ">=3.10"

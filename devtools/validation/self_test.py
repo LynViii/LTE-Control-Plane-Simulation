@@ -140,7 +140,7 @@ def check_document_contract() -> None:
         if phrase not in manual:
             raise RuntimeError(f"README-说明书 missing current runtime control: {phrase}")
     security_doc = (docs_dir / "Security实现与测试.md").read_text(encoding="utf-8")
-    for phrase in ("run_standalone_core_checks", "Security Core 本身不依赖 Web、HTTP、UDP、Attach", "cryptography/OpenSSL", "StandaloneSrtpModule", "security-demo.cmd", "不再为了这一功能额外构建第三个 Security Demo EXE"):
+    for phrase in ("run_standalone_core_checks", "Security Core 本身不依赖 Web、HTTP、UDP、Attach", "cryptography/OpenSSL", "StandaloneSrtpModule", "security-demo.cmd", "不再为了这一功能额外构建第三个 Security Demo EXE", "SRTCP", "32-bit NAS COUNT", "128-EEA2", "128-EIA2", "re-key", "AES-GCM"):
         if phrase not in security_doc:
             raise RuntimeError(f"Security documentation missing current implementation detail: {phrase}")
 
@@ -177,6 +177,9 @@ def main() -> int:
         test_env["TEMP"] = str(temp_dir)
         test_env["TMP"] = str(temp_dir)
         test_env["PYTHONDONTWRITEBYTECODE"] = "1"
+        # Keep delivery validation deterministic even when the host Python has
+        # unrelated third-party pytest plugins installed.
+        test_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
         test_env["PYTHONPATH"] = str(ROOT / "src")
         run([sys.executable, "-m", "compileall", "-q", "-b", str(ROOT / "src"), str(ROOT / "devtools" / "tests")], "[1/8] Python compileall", env=test_env)
         generated_bytecode = list(ROOT.rglob("*.pyc"))

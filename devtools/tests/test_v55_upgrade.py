@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 from lte_sim.control_plane.engine import EngineHooks, SimulatorEngine, build_enb_response
+from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.fault_injection.core import PRESETS
 from lte_sim.lan import management_state_snapshot
 from lte_sim.state import StateStore, default_state
@@ -42,8 +43,13 @@ def test_v55_settings_owns_scale_and_mode_exit_controls():
 
 def test_v55_network_auth_reject_is_caused_by_res_xres_decision(tmp_path):
     store = StateStore(tmp_path / "state.json", max_logs=1000)
-    store.set_custom_fault(dict(PRESETS["AUTH_NETWORK_REJECT"], timeout_ms=450))
-    engine = SimulatorEngine(store, EngineHooks(lambda req: build_enb_response(req, store.snapshot()["enb"])), step_delay=0)
+    store.set_custom_fault(dict(PRESETS["AUTH_NETWORK_REJECT"], timeout_ms=1000))
+    network_context = NetworkControlPlaneContext()
+    engine = SimulatorEngine(
+        store,
+        EngineHooks(lambda req: build_enb_response(req, store.snapshot()["enb"], network_context=network_context)),
+        step_delay=0,
+    )
     try:
         engine.start_attach()
         report = wait_finished(store)["diagnosis"]["lastReport"]
@@ -63,7 +69,7 @@ def test_v55_network_auth_reject_is_caused_by_res_xres_decision(tmp_path):
     decision = report["network_decision"]
     assert decision["decision"] == "REJECT"
     assert decision["rejectCause"] == "RES_MISMATCH"
-    assert [item["passed"] for item in decision["checks"]] == [True, True, False]
+    assert [item["passed"] for item in decision["checks"]] == [True, True, True, False]
 
 
 def test_v55_normal_auth_decision_accepts_valid_res():

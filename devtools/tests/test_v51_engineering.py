@@ -6,6 +6,7 @@ import pytest
 from lte_sim.control_plane.specs import flow_step_for_stage, timer_spec_for_stage
 from lte_sim.fault_injection.core import CATALOG, FIELD_SUGGESTIONS, PRESETS
 from lte_sim.control_plane.engine import EngineHooks, SimulatorEngine, build_enb_response
+from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.state import StateStore
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,10 +17,15 @@ def _run(tmp_path, config):
     if config:
         store.set_custom_fault(config)
     sent = []
+    network_context = NetworkControlPlaneContext()
 
     def network(request):
         sent.append(request.copy())
-        return build_enb_response(request, store.snapshot()["enb"])
+        return build_enb_response(
+            request,
+            store.snapshot()["enb"],
+            network_context=network_context,
+        )
 
     engine = SimulatorEngine(store, EngineHooks(network), step_delay=0)
     try:
@@ -108,7 +114,8 @@ def test_each_configurable_stage_modifies_real_consumed_primitive(tmp_path, stag
     ],
 )
 def test_quick_fault_templates_have_runtime_evidence(tmp_path, preset, root, step):
-    config = dict(PRESETS[preset], timeout_ms=250)
+    timeout_ms = 250 if preset in {"RRC_RESPONSE_TIMEOUT", "AUTH_RESPONSE_TIMEOUT"} else 1000
+    config = dict(PRESETS[preset], timeout_ms=timeout_ms)
     snap, _ = _run(tmp_path, config)
     report = snap["diagnosis"]["lastReport"]
     assert report["root_cause"] == root

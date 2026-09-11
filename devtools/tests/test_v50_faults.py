@@ -2,6 +2,7 @@ import time
 import pytest
 from lte_sim.fault_injection.core import FaultConfig, PRESETS
 from lte_sim.control_plane.engine import SimulatorEngine, EngineHooks, build_enb_response
+from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.state import StateStore
 
 def run_case(tmp_path, **changes):
@@ -10,9 +11,14 @@ def run_case(tmp_path, **changes):
     config.update(changes)
     store.set_custom_fault(config)
     sent=[]
+    network_context = NetworkControlPlaneContext()
     def network(request):
         sent.append(request)
-        return build_enb_response(request,store.snapshot()['enb'])
+        return build_enb_response(
+            request,
+            store.snapshot()['enb'],
+            network_context=network_context,
+        )
     engine=SimulatorEngine(store,EngineHooks(network),step_delay=0)
     try:
         engine.start_attach()

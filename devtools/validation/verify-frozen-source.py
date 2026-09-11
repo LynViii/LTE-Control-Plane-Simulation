@@ -2,7 +2,7 @@
 from pathlib import Path
 import json, types
 from PyInstaller.archive.readers import CArchiveReader
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 release=ROOT/'release'/f"LTE-Control-Plane-Simulator-v{(ROOT/'VERSION').read_text().strip()}-win64"
 def normalized(code):
     return code.replace(co_filename='',co_consts=tuple(normalized(x) if isinstance(x,types.CodeType) else x for x in code.co_consts))

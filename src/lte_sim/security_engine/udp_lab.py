@@ -119,6 +119,7 @@ class SrtpUdpLab:
         security_log: list[dict] = []
         accepted = rejected = sent = received_count = 0
         auth_failures = replay_rejections = 0
+        content_matches = wire_matches = expectation_matches = 0
         receiver: socket.socket | None = None
         sender: socket.socket | None = None
         sessions = None
@@ -236,9 +237,16 @@ class SrtpUdpLab:
 
                 verification_error: dict | None = None
                 recovered_payload = None
+                recovered_rtp = None
+                full_rtp_match = False
+                application_payload_match = False
                 try:
                     plain = sessions.unprotect(received)
-                    recovered_payload = RTPPacket.parse(plain).application_payload.decode("utf-8")
+                    recovered_rtp = plain
+                    recovered_packet = RTPPacket.parse(plain)
+                    recovered_payload = recovered_packet.application_payload.decode("utf-8")
+                    full_rtp_match = plain == rtp
+                    application_payload_match = recovered_packet.application_payload == application_payload
                     accepted += 1
                     outcome = "ACCEPTED"
                 except SrtpError as exc:
@@ -250,6 +258,27 @@ class SrtpUdpLab:
                         auth_failures += 1
                     if code == "REPLAY_REJECTED":
                         replay_rejections += 1
+
+                expected_outcome = (
+                    "REJECTED" if scenario in {"TAMPER_CIPHERTEXT", "TAMPER_TAG", "WRONG_KEY"}
+                    else ("REJECTED" if scenario == "REPLAY" and index == 1 else "ACCEPTED")
+                )
+                expected_error = (
+                    "WRONG_KEY_OR_AUTH_FAILED" if scenario == "WRONG_KEY"
+                    else ("AUTHENTICATION_FAILED" if scenario in {"TAMPER_CIPHERTEXT", "TAMPER_TAG"}
+                          else ("REPLAY_REJECTED" if scenario == "REPLAY" and index == 1 else None))
+                )
+                error_code = verification_error.get("code") if verification_error else None
+                error_matches = expected_error is None or error_code == expected_error
+                outcome_matches = outcome == expected_outcome and error_matches
+                if expected_outcome == "ACCEPTED":
+                    content_ok = full_rtp_match and application_payload_match
+                else:
+                    content_ok = recovered_rtp is None
+                packet_verification_ok = actual_wire_match and outcome_matches and content_ok
+                wire_matches += int(actual_wire_match)
+                content_matches += int(content_ok)
+                expectation_matches += int(outcome_matches)
 
                 protected_view = _packet_view(protected, protected=True)
                 packet_record = {
@@ -279,18 +308,29 @@ class SrtpUdpLab:
                     },
                     "verification": {
                         "outcome": outcome,
+                        "expectedOutcome": expected_outcome,
+                        "expectedErrorCode": expected_error,
                         "accepted": outcome == "ACCEPTED",
                         "error": verification_error,
                         "reason": verification_error["detail"] if verification_error else None,
                         "recoveredPayload": recovered_payload,
+                        "recoveredRtpHex": recovered_rtp.hex().upper() if recovered_rtp is not None else None,
+                        "fullRtpMatch": full_rtp_match,
+                        "applicationPayloadMatch": application_payload_match,
+                        "wireBytesMatch": actual_wire_match,
+                        "outcomeMatchesExpectation": outcome_matches,
+                        "errorCodeMatchesExpectation": error_matches,
+                        "contentRequirementMet": content_ok,
+                        "packetVerificationOk": packet_verification_ok,
                     },
                 }
                 packets.append(packet_record)
                 semantic = {
-                    "packet": packet_number,
-                    "sequence": packet_record["rtp"]["sequence"],
-                    "outcome": outcome,
-                    "errorCode": verification_error["code"] if verification_error else None,
+                    "packet": packet_number, "sequence": packet_record["rtp"]["sequence"],
+                    "outcome": outcome, "errorCode": error_code,
+                    "wireBytesMatch": actual_wire_match, "fullRtpMatch": full_rtp_match,
+                    "contentRequirementMet": content_ok, "outcomeMatchesExpectation": outcome_matches,
+                    "packetVerificationOk": packet_verification_ok,
                 }
                 semantic_events.append(semantic)
 
@@ -324,10 +364,11 @@ class SrtpUdpLab:
 
         if fatal_error is not None:
             ok = False
-        elif expected_reject:
-            ok = rejected >= 1 and accepted == (1 if scenario == "REPLAY" else 0)
         else:
-            ok = rejected == 0 and accepted == len(sequences)
+            # v6.1 PASS is strict: every datagram must arrive byte-for-byte,
+            # every success must recover the exact RTP/application payload, and
+            # every negative case must return the expected error class.
+            ok = bool(packets) and all(item.get("verification", {}).get("packetVerificationOk") for item in packets)
 
         finished_epoch = time.time()
         pcap_path = write_udp_pcap(run_dir / "traffic.pcap", pcap_datagrams)
@@ -335,17 +376,15 @@ class SrtpUdpLab:
             json.dumps(semantic_events, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         statistics = {
-            "sent": sent,
-            "received": received_count,
-            "accepted": accepted,
-            "rejected": rejected,
-            "authenticationFailures": auth_failures,
-            "replayRejections": replay_rejections,
+            "sent": sent, "received": received_count, "accepted": accepted, "rejected": rejected,
+            "authenticationFailures": auth_failures, "replayRejections": replay_rejections,
+            "wireBytesMatches": wire_matches, "contentRequirementsMet": content_matches,
+            "expectationMatches": expectation_matches, "strictVerifiedPackets": sum(1 for item in packets if item.get("verification", {}).get("packetVerificationOk")),
         }
         result = {
             "ok": ok,
             "scenario": scenario,
-            "backend": "Security Core / SRTP Engine",
+            "backend": "Security Core / SRTP+SRTCP Engine",
             "backendProbe": SrtpEngine.probe(),
             "profile": "SRTP_PROFILE_AES128_CM_SHA1_80",
             "transport": "UDP/socket.sendto+recvfrom",

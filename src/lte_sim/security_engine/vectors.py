@@ -79,3 +79,47 @@ def verify_rfc3711_vectors() -> dict:
         },
     }
 
+
+
+
+def verify_srtcp_regression_vectors() -> dict:
+    """Frozen project SRTCP packet regression vectors.
+
+    These byte strings are a deterministic regression oracle for this project,
+    not a claim that RFC 3711 publishes full SRTCP packet known-answer vectors.
+    Independent interoperability is checked separately with optional libSRTP.
+    """
+    import struct
+    from .srtcp import SRTCPContext
+
+    key = bytes(range(30))
+    rr = struct.pack("!BBHI", 0x80, 201, 1, 0x13572468)
+    sdes = struct.pack("!BBHI", 0x81, 202, 2, 0x13572468) + b"\x00\x00\x00\x00"
+    expected = {
+        "rrEncryptedE1": "80C9000113572468800000004C298F762BF954315EDF",
+        "rrIntegrityOnlyE0": "80C9000113572468000000000ECD36A8CACB29C77AB5",
+        "compoundEncryptedE1": "80C900011357246897AF4FBA069A8EE2D8B29D7C8000000056EA6C2D7831DC24621E",
+    }
+    actual = {}
+    ctx = SRTCPContext(key)
+    try:
+        actual["rrEncryptedE1"] = ctx.protect(rr, encrypt=True).hex().upper()
+    finally:
+        ctx.close()
+    ctx = SRTCPContext(key)
+    try:
+        actual["rrIntegrityOnlyE0"] = ctx.protect(rr, encrypt=False).hex().upper()
+    finally:
+        ctx.close()
+    ctx = SRTCPContext(key)
+    try:
+        actual["compoundEncryptedE1"] = ctx.protect(rr + sdes, encrypt=True).hex().upper()
+    finally:
+        ctx.close()
+    ok = all(hmac.compare_digest(actual[name], value) for name, value in expected.items())
+    return {
+        "ok": ok,
+        "scope": "project-frozen SRTCP regression vectors; optional libSRTP provides independent reference when installed",
+        "expected": expected,
+        "actual": actual,
+    }

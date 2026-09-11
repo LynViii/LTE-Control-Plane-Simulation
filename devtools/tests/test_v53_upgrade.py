@@ -10,6 +10,7 @@ from pathlib import Path
 
 from lte_sim.config import Settings
 from lte_sim.control_plane.engine import EngineHooks, SimulatorEngine, build_enb_response
+from lte_sim.control_plane.network_context import NetworkControlPlaneContext
 from lte_sim.fault_injection.core import PRESETS
 from lte_sim.security_engine.udp_lab import SrtpUdpLab
 from lte_sim.state import StateStore
@@ -39,9 +40,9 @@ def wait_finished(store: StateStore, timeout: float = 5.0):
 
 
 def test_v53_version_and_root_are_compact():
-    assert read("VERSION").strip() == "6.0.4"
-    assert 'version = "6.0.4"' in read("pyproject.toml")
-    assert 'FileVersion\', \'6.0.4' in read("packaging/version-info.txt")
+    assert read("VERSION").strip() == "6.1.2"
+    assert 'version = "6.1.2"' in read("pyproject.toml")
+    assert 'FileVersion\', \'6.1.2' in read("packaging/version-info.txt")
     assert (ROOT / "scripts/windows/build-exe.ps1").is_file()
     assert not (ROOT / "build-exe.cmd").exists()
     assert not (ROOT / "scripts/build-embedded.ps1").exists()
@@ -65,7 +66,7 @@ def test_v53_docs_are_consolidated_and_chinese_named():
     assert actual == expected
     assert {"Security独立Demo.md", "流程图提示词.md", "完整更新记录.md", "README.md"}.issubset({p.name for p in (ROOT / "docs/reference").glob("*.md")})
     assert not (ROOT / "docs/delivery").exists()
-    assert "v6.0.4" in read("docs/README.md")
+    assert "v6.1.2" in read("docs/README.md")
     assert "第一次接触项目" in read("docs/README-说明书.md")
 
 
@@ -93,8 +94,13 @@ def test_v53_normal_security_is_really_three_packets(tmp_path):
 
 def test_v53_parameter_diagnosis_proves_injection_and_consumption(tmp_path):
     store = StateStore(tmp_path / "state.json", max_logs=1000)
-    store.set_custom_fault(dict(PRESETS["AUTH_PARAMETER_INVALID"], timeout_ms=220))
-    engine = SimulatorEngine(store, EngineHooks(lambda req: build_enb_response(req, store.snapshot()["enb"])), step_delay=0)
+    store.set_custom_fault(dict(PRESETS["AUTH_PARAMETER_INVALID"], timeout_ms=1000))
+    network_context = NetworkControlPlaneContext()
+    engine = SimulatorEngine(
+        store,
+        EngineHooks(lambda req: build_enb_response(req, store.snapshot()["enb"], network_context=network_context)),
+        step_delay=0,
+    )
     try:
         engine.start_attach()
         report = wait_finished(store)["diagnosis"]["lastReport"]

@@ -8,8 +8,8 @@ def read(rel: str) -> str:
 
 
 def test_v37_default_version():
-    assert read("VERSION").strip() == "6.0.4"
-    assert '__version__ = "6.0.4"' in read("src/lte_sim/version.py")
+    assert read("VERSION").strip() == "6.1.2"
+    assert '__version__ = "6.1.2"' in read("src/lte_sim/version.py")
 
 
 def test_web_compact_progress_and_details():

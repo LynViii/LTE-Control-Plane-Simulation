@@ -367,25 +367,35 @@
       <span><b>会话状态</b><i id="securitySessionStatus">未建立</i><small><em id="securityKeyId">--</em> · <em id="securityPacketCount">0</em> 包</small></span>
       <span class="security-hidden-meta" hidden><i id="securityProtocolImpl">项目内置</i><i id="securityTestBoundary">独立可测</i><i id="securityIntegrationSummary">--</i><i id="securityLibsrtpValue">--</i></span>
     </div>
-    <div class="security-source-strip" aria-label="Security 实现代码位置"><code>security_engine/core.py</code><code>security_engine/service.py</code><code>security_engine/udp_lab.py</code></div>
-    <div class="security-explain-strip" aria-label="Security 中文说明"><p><strong>区域说明：</strong>NAS 协商状态来自 Attach 的 Security Mode；SRTP Lab 使用独立 Security Core。Core 健康检查只验证协议状态和标准向量，端到端链路验证才执行 Sender → SRTP Protect → UDP → Receiver Verify/Unprotect。</p></div>
+    <div class="security-source-strip" aria-label="Security 实现代码位置"><code>security_engine/core.py</code><code>security_engine/srtcp.py</code><code>security_engine/session.py</code><code>security_engine/nas_security.py</code><code>security_engine/service.py</code><code>security_engine/udp_lab.py</code></div>
+    <div class="security-explain-strip" aria-label="Security 中文说明"><p><strong>区域说明：</strong>v6.1 将两条安全链都接到真实字节处理：Attach 的 NAS Security Mode 使用 transaction 级 COUNT、128-EIA2 完整性和 128-EEA2 加密；媒体实验使用可独立调用的 SRTP/SRTCP Core。两者共享“后端真实执行、失败不误推进状态、可验证”的原则，但密钥体系和协议状态彼此独立。</p></div>
+    <section class="nas-byte-proof" aria-label="NAS Security 实际字节保护">
+      <div class="nas-byte-proof-head"><div><strong>NAS Security · Attach 实际字节保护</strong><span>协商结果不再只显示 EIA2 / EEA2：Security Mode Command、Complete、Attach Accept / Complete 会生成并校验真实 protected NAS PDU bytes。</span></div><span class="small-badge" id="nasByteProtectionStatus">等待 Attach</span></div>
+      <div class="nas-byte-proof-grid">
+        <article><b>算法</b><strong id="nasByteAlgorithms">EIA2 + EEA2</strong><small>128-EIA2 AES-CMAC-32 / 128-EEA2 AES-CTR</small></article>
+        <article><b>UE 侧 COUNT</b><strong id="nasUeCount">UL -- / DL --</strong><small>发送计数 / 已验证下行最高 COUNT</small></article>
+        <article><b>MME 侧 COUNT</b><strong id="nasMmeCount">DL -- / UL --</strong><small>发送计数 / 已验证上行最高 COUNT</small></article>
+        <article><b>最近保护事件</b><strong id="nasLastSecurityEvent">尚无</strong><small id="nasLastSecurityMeta">完成 Authentication 后建立 transaction 级 NAS Security Context</small></article>
+        <article><b>边界</b><strong>真实安全封装</strong><small>COUNT / NAS-MAC / Ciphering 为真实字节处理；内部 NAS IE codec 仍为项目简化实现</small></article>
+      </div>
+    </section>
     <section class="security-standalone-proof" aria-label="独立 Security Demo">
-      <div class="security-standalone-head"><div><strong>独立 SRTP Demo · 后端直接执行</strong><span>不启动 LTE 附着流程，不读取场景名称/故障配置，也不依赖 Web 页面状态；直接调用 StandaloneSrtpModule 的原始 RTP/SRTP 字节接口。</span></div><span class="small-badge">独立模块原型</span></div>
+      <div class="security-standalone-head"><div><strong>独立 Security Core Demo · 后端直接执行</strong><span>不启动 LTE 附着流程，不读取场景名称/故障配置，也不依赖 Web 页面状态；直接调用 StandaloneSrtpModule 的原始 RTP/RTCP → SRTP/SRTCP 字节接口。</span></div><span class="small-badge">独立模块原型</span></div>
       <div class="security-standalone-actions"><div><b>推荐方式</b><span>直接点击右侧按钮：由当前后端进程调用独立 <code>StandaloneSrtpModule</code>，不会额外弹出 PowerShell/CMD 窗口。</span></div><div><b>源码复核</b><span>需要命令行交叉验证时再运行 <code>scripts\windows\security-demo.cmd</code>；该脚本依赖项目 Python 环境，并会保存 JSON 后打开结果。</span></div><button class="primary-button" id="securityStandaloneDemoButton" type="button">运行后端独立 Demo</button></div>
       <div class="security-standalone-result" id="securityStandaloneResult"><strong>尚未运行</strong><span>点击后结果直接显示在本页，同时由后端保存 JSON 证据；不会启动 LTE Attach，也不会读取 Scenario/FaultConfig。</span></div>
     </section>
     <section class="security-accuracy-matrix" aria-label="Security 准确性验证矩阵">
       <div class="security-accuracy-title"><strong>准确性验证层次</strong><span>四层证据互相独立：标准答案、协议状态、参考实现、真实网络链路。</span></div>
       <div class="security-accuracy-grid">
-        <article><b>① RFC 标准向量</b><strong id="securityVectorValidation">待检查</strong><small>RFC 3711 / RFC 2202 known-answer vectors</small></article>
-        <article><b>② Core 状态与边界</b><strong id="securityCoreValidation">待检查</strong><small>ROC / Replay / Header / 并发 / fuzz</small></article>
+        <article><b>① 标准 Known-answer</b><strong id="securityVectorValidation">待检查</strong><small>RFC 3711 / RFC 2202 + 3GPP EIA2 known-answer</small></article>
+        <article><b>② Core 状态与边界</b><strong id="securityCoreValidation">待检查</strong><small>SRTP/SRTCP / ROC / Replay / re-key / NAS COUNT</small></article>
         <article><b>③ 参考实现差分</b><strong id="securityReferenceValidation">可选</strong><small>安装 pylibsrtp 后与 libSRTP 双向对照</small></article>
         <article><b>④ 真实 UDP 端到端</b><strong id="securityUdpValidation">待运行</strong><small>Sender → protect → UDP → verify/unprotect</small></article>
       </div>
     </section>
     <div class="security-controls-v53 security-workflow-v56">
       <section class="security-selftest-row-v56" aria-label="Security Core 健康检查">
-        <div><strong>① Core 健康检查</strong><span>验证 SRTP Core 状态机、Replay/ROC 和 RFC 标准向量；不执行 UDP 场景。</span></div>
+        <div><strong>① Core 健康检查</strong><span>验证 SRTP/SRTCP、Replay/ROC、re-key、NAS EEA2/EIA2 bytes 与标准向量；不执行 UDP 场景。</span></div>
         <button class="secondary-button security-selftest-trigger" id="securitySelfTestButton" type="button">运行 Core 健康检查</button>
       </section>
       <section class="security-verification-row-v56" aria-label="端到端链路验证">

@@ -65,11 +65,12 @@ def test_replaceable_crypto_backend():
 def test_standalone_core_checks_cover_runtime_edge_cases():
     result = run_standalone_core_checks()
     assert result["ok"]
-    assert result["passed"] == result["total"] == 11
+    assert result["passed"] == result["total"] == 17
     assert set(result["cases"]) == {
         "roundtrip", "tamperState", "replay", "outOfOrder", "replayBoundary",
         "rollover", "multiSsrc", "concurrentSsrc", "headerVariants",
-        "deterministicFuzz", "closedContext",
+        "deterministicFuzz", "closedContext", "rekeyPreservesState",
+        "srtcpRoundtripReplay", "srtcpFixedVectors", "nasEea2Eia2Bytes", "nasEia2KnownAnswer", "nasCountRollover",
     }
     reference = result["optionalReferenceCrosscheck"]
     assert reference["status"] in {"NOT_INSTALLED", "PASS"}

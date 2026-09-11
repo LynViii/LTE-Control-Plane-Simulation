@@ -10,9 +10,9 @@ def read(path: str) -> str:
 
 
 def test_version_and_current_docs_are_v592():
-    assert read("VERSION").strip() == "6.0.4"
-    assert '__version__ = "6.0.4"' in read("src/lte_sim/version.py")
-    assert 'version = "6.0.4"' in read("pyproject.toml")
+    assert read("VERSION").strip() == "6.1.2"
+    assert '__version__ = "6.1.2"' in read("src/lte_sim/version.py")
+    assert 'version = "6.1.2"' in read("pyproject.toml")
     for path in (
         "README.md",
         "docs/README.md",
@@ -23,7 +23,7 @@ def test_version_and_current_docs_are_v592():
         "docs/项目架构与源码结构.md",
         "docs/第三方依赖与许可.md",
     ):
-        assert "6.0.4" in read(path), path
+        assert "6.1.2" in read(path), path
 
 
 def test_current_docs_do_not_repeat_removed_v591_claims():
@@ -62,7 +62,7 @@ def test_historical_docs_are_explicitly_marked_as_historical():
 def test_security_runtime_standalone_checks_are_complete():
     result = run_standalone_core_checks()
     assert result["ok"]
-    assert result["passed"] == result["total"] == 11
+    assert result["passed"] == result["total"] == 17
     assert all(item["ok"] for item in result["cases"].values())
 
 
@@ -74,7 +74,7 @@ def test_security_selftest_ui_surfaces_core_checks():
     assert "Core 独立检查" in js
     assert "security-core-check-grid" in css
     assert "run_standalone_core_checks" in doc
-    assert "11 项 Core 独立检查" in doc
+    assert "17 项" in doc
 
 
 def test_current_delivery_doc_paths_exist():
@@ -89,6 +89,6 @@ def test_current_delivery_doc_paths_exist():
 def test_security_full_selftest_combines_core_vectors_and_service_checks():
     result = SecurityContext().self_test()
     assert result["ok"]
-    assert result["standaloneCoreChecks"]["passed"] == 11
+    assert result["standaloneCoreChecks"]["passed"] == 17
     assert result["referenceVectors"]["ok"]
     assert result["tamperRejected"] and result["replayRejected"]

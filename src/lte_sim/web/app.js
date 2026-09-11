@@ -106,6 +106,12 @@ const el = {
   srtpAuthValue: $("#srtpAuthValue"),
   securityKeyId: $("#securityKeyId"),
   securityPacketCount: $("#securityPacketCount"),
+  nasByteProtectionStatus: $("#nasByteProtectionStatus"),
+  nasByteAlgorithms: $("#nasByteAlgorithms"),
+  nasUeCount: $("#nasUeCount"),
+  nasMmeCount: $("#nasMmeCount"),
+  nasLastSecurityEvent: $("#nasLastSecurityEvent"),
+  nasLastSecurityMeta: $("#nasLastSecurityMeta"),
   securityVectorValidation: $("#securityVectorValidation"),
   securityCoreValidation: $("#securityCoreValidation"),
   securityReferenceValidation: $("#securityReferenceValidation"),
@@ -1733,6 +1739,30 @@ function renderState(nextState) {
   el.securityKeyId.textContent = security.keyId || "--";
   el.securityPacketCount.textContent = String(security.packetCount || 0);
 
+  const ueNas = security.nasByteProtection || {};
+  const mmeNas = nextState.networkContext?.active?.nasSecurity || {};
+  const nasActive = Boolean(ueNas.active || mmeNas.active);
+  if (el.nasByteProtectionStatus) {
+    el.nasByteProtectionStatus.textContent = nasActive ? "字节保护已接入" : (security.nasNegotiated ? "已协商 · 等待字节证据" : "等待 Attach");
+    el.nasByteProtectionStatus.dataset.active = String(nasActive);
+  }
+  if (el.nasByteAlgorithms) el.nasByteAlgorithms.textContent = `${security.nasIntegrity?.split(" /")[0] || "EIA2"} + ${security.nasCipher?.split(" /")[0] || "EEA2"}`;
+  if (el.nasUeCount) el.nasUeCount.textContent = `UL TX ${ueNas.uplinkTxCount ?? "--"} / DL RX ${ueNas.downlinkRxHighest ?? "--"}`;
+  if (el.nasMmeCount) el.nasMmeCount.textContent = `DL TX ${mmeNas.downlinkTxCount ?? "--"} / UL RX ${mmeNas.uplinkRxHighest ?? "--"}`;
+  const nasEvent = [...(nextState.runtimeEvents || [])].reverse().find((item) => ["NAS_SECURITY_PDU_PROTECTED","NAS_SECURITY_PDU_VERIFIED","NAS_SECURITY_PDU_FAILED"].includes(item.event));
+  if (el.nasLastSecurityEvent) {
+    if (nasEvent) {
+      const dir = nasEvent.direction === "UPLINK" ? "UL" : (nasEvent.direction === "DOWNLINK" ? "DL" : "--");
+      el.nasLastSecurityEvent.textContent = `${nasEvent.event === "NAS_SECURITY_PDU_FAILED" ? "校验失败" : "PASS"} · ${dir} COUNT ${nasEvent.count ?? "--"}`;
+    } else el.nasLastSecurityEvent.textContent = "尚无";
+  }
+  if (el.nasLastSecurityMeta) {
+    const last = nasEvent || ueNas.last || mmeNas.last || {};
+    const mac = last.macHex ? `MAC ${String(last.macHex).slice(0,8)}` : "MAC --";
+    const hash = last.protectedPduSha256 || last.protectedSha256;
+    el.nasLastSecurityMeta.textContent = `${last.primitive || last.messageKind || "protected NAS PDU"} · ${mac}${hash ? ` · SHA-256 ${String(hash).slice(0,12)}…` : ""}`;
+  }
+
   renderRuntime(nextState);
   renderControlObservability(nextState);
   renderPrimitiveTrace(nextState.taskEvents || nextState.primitiveTrace || []);
@@ -2221,7 +2251,7 @@ async function runStandaloneSecurityDemo() {
       body: JSON.stringify({ payload, sequence: 321 }),
     });
     const stateInfo = result.state || {};
-    el.securityStandaloneResult.innerHTML = `<div class="security-standalone-verdict"><strong>${result.ok ? "独立后端 Demo · PASS" : "独立后端 Demo · FAIL"}</strong><span>Execution ID <code>${escapeHtml(result.executionId || "--")}</code></span></div><dl><div><dt>调用模块</dt><dd>${escapeHtml(result.module || "StandaloneSrtpModule")}</dd></div><div><dt>输入 RTP SHA-256</dt><dd><code>${escapeHtml(String(result.inputSha256 || "").slice(0,24))}…</code></dd></div><div><dt>输出 SRTP SHA-256</dt><dd><code>${escapeHtml(String(result.protectedSha256 || "").slice(0,24))}…</code></dd></div><div><dt>恢复 RTP SHA-256</dt><dd><code>${escapeHtml(String(result.recoveredSha256 || "").slice(0,24))}…</code></dd></div><div><dt>protect / unprotect</dt><dd>${Number(stateInfo.protectCount || 0)} / ${Number(stateInfo.unprotectCount || 0)}</dd></div><div><dt>读取 Web / Attach / FaultConfig</dt><dd>${result.webStateRead || result.lteAttachStateRead || result.faultConfigRead ? "是" : "否"}</dd></div><div><dt>后端落盘证据</dt><dd><code>${escapeHtml(result.artifactPath || "--")}</code></dd></div></dl><p>RTP ${Number(result.rtpBytes || 0)} B → SRTP ${Number(result.srtpBytes || 0)} B；输入与恢复摘要${result.inputSha256 === result.recoveredSha256 ? "一致" : "不一致"}，SRTP 摘要与明文不同。</p>`;
+    el.securityStandaloneResult.innerHTML = `<div class="security-standalone-verdict"><strong>${result.ok ? "独立后端 Demo · PASS" : "独立后端 Demo · FAIL"}</strong><span>Execution ID <code>${escapeHtml(result.executionId || "--")}</code></span></div><dl><div><dt>调用模块</dt><dd>${escapeHtml(result.module || "StandaloneSrtpModule")}</dd></div><div><dt>输入 RTP SHA-256</dt><dd><code>${escapeHtml(String(result.inputSha256 || "").slice(0,24))}…</code></dd></div><div><dt>输出 SRTP SHA-256</dt><dd><code>${escapeHtml(String(result.protectedSha256 || "").slice(0,24))}…</code></dd></div><div><dt>恢复 RTP SHA-256</dt><dd><code>${escapeHtml(String(result.recoveredSha256 || "").slice(0,24))}…</code></dd></div><div><dt>SRTCP / RTCP</dt><dd>${result.srtcpRoundtrip ? "PASS" : "FAIL"} · ${Number(result.rtcpBytes || 0)} B → ${Number(result.srtcpBytes || 0)} B</dd></div><div><dt>SRTP protect / unprotect</dt><dd>${Number(stateInfo.protectCount || 0)} / ${Number(stateInfo.unprotectCount || 0)}</dd></div><div><dt>SRTCP protect / unprotect</dt><dd>${Number(stateInfo.srtcpProtectCount || 0)} / ${Number(stateInfo.srtcpUnprotectCount || 0)}</dd></div><div><dt>会话代际 / re-key</dt><dd>${Number(stateInfo.lifecycle?.generation || 0)} / ${Number(stateInfo.lifecycle?.rekeyCount || 0)}</dd></div><div><dt>读取 Web / Attach / FaultConfig</dt><dd>${result.webStateRead || result.lteAttachStateRead || result.faultConfigRead ? "是" : "否"}</dd></div><div><dt>后端落盘证据</dt><dd><code>${escapeHtml(result.artifactPath || "--")}</code></dd></div></dl><p>SRTP：RTP ${Number(result.rtpBytes || 0)} B → SRTP ${Number(result.srtpBytes || 0)} B，输入与恢复摘要${result.inputSha256 === result.recoveredSha256 ? "一致" : "不一致"}；SRTCP 同时执行 RTCP → SRTCP → RTCP 回环验证。</p>`;
     toast(result.ok ? "独立 SRTP Demo 已在后端执行" : "独立 SRTP Demo 未通过", result.ok ? "ok" : "error");
   } catch (error) {
     el.securityStandaloneResult.innerHTML = `<strong>独立 Demo 执行失败</strong><span>${escapeHtml(error.message)}</span>`;

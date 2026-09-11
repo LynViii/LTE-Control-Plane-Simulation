@@ -1,10 +1,10 @@
 # LTE 控制面仿真
 
-用 Python 模拟 LTE 终端的 Attach 流程，观察消息在 AP、Modem 和 eNB/MME 之间如何传递，以及流程在哪一步出错。当前版本为 v6.0.4。
+用 Python 模拟 LTE 终端的 Attach 流程，观察消息在 AP、Modem 和 eNB/MME 之间如何传递，以及流程在哪一步出错。当前版本为 v6.1.2。
 
 AP 通过 AT 指令控制 Modem。Modem 内部有 NAS、RRC、L2、L1 四个工作线程，通过队列传递原语；AP–Modem 和 Modem–eNB/MME 使用 TCP 通信。浏览器页面可以查看流程状态、消息记录、计时器和故障诊断，也可以修改消息字段、延迟或丢弃消息，观察后续响应。
 
-这里使用简化的 JSON 消息和网络侧模型，适合学习、调试 Attach 控制流程；运行时不需要基站、射频设备或 USIM。鉴权中的 RES/XRES 是模型字段。Security 页面另有独立的 SRTP 数据包实验。
+项目使用简化的 JSON 消息和网络侧模型，适合学习、调试 Attach 控制流程，无需基站、射频设备或 USIM。鉴权中的 RES/XRES 是模型字段。Security 页面分别展示媒体 SRTP/SRTCP 和 Attach 中的 NAS 消息保护。
 
 ## 运行
 
@@ -47,20 +47,20 @@ Attach 按以下顺序运行：
 
 故障配置分为预设和自定义两种。自定义配置只能修改目录中列出的字段，并按字段类型校验；延迟、丢弃、重复等动作在消息交付位置执行。普通诊断会使用运行事件中的注入记录。“证据隔离复算”会排除 `FAULT_INJECTED` 事件，但仍使用网络侧判定和校验事件。
 
-## SRTP 实验
+## Security Core
 
-SRTP 模块在 [security_engine](src/lte_sim/security_engine/) 中，可以直接处理 RTP/SRTP 字节，也可以通过 UDP 实验检查正常收发、篡改、重放、乱序和序号回绕。
+`src/lte_sim/security_engine/` 提供 RTP/RTCP 字节接口，使用 AES-128-CM/HMAC-SHA1-80、`kdr=0`，维护 SRTP 的 ROC、重放窗口和 SRTCP 的 31-bit 索引。`StandaloneSrtpModule` 可以单独调用，支持 re-key 和会话重建。
 
-协议处理采用 AES-128-CM/HMAC-SHA1-80，`kdr=0`。项目代码负责 RTP 解析、密钥派生、包索引、ROC 和重放窗口，`cryptography/OpenSSL` 提供 AES、HMAC 运算。目前没有实现 SRTCP、MKI 或密钥协商。
+NAS 模块使用 32-bit COUNT、128-EEA2 AES-CTR 和 128-EIA2 AES-CMAC-32 处理 Security Mode、Attach Accept 和 Attach Complete。密钥由固定项目根值和 transaction ID 生成，内层字段使用简化编码，适用于仿真实验。实现位于 [nas_security.py](src/lte_sim/security_engine/nas_security.py)。
 
-安装项目后可单独执行：
+安装项目后可以独立执行：
 
 ```powershell
 .\.venv\Scripts\python.exe -m lte_sim.security_engine.cli self-test
 .\.venv\Scripts\python.exe -m lte_sim.security_engine.cli demo
 ```
 
-UDP 实验在主控电脑本机收发。它与 Attach 中的 NAS Security Mode 分开运行。
+外部 Python 程序可调用 `lte_sim.security_engine.StandaloneSrtpModule`；`service.py` 负责仿真程序适配，`udp_lab.py` 负责 UDP 实验。AES-GCM、MKI 和 DTLS-SRTP 尚未实现。
 
 ## 源码
 
@@ -70,7 +70,7 @@ UDP 实验在主控电脑本机收发。它与 Attach 中的 NAS Security Mode �
 | `src/lte_sim/runtime/` | 工作线程、队列、计时器和 Trace |
 | `src/lte_sim/fault_injection/` | 故障配置、字段目录及注入动作 |
 | `src/lte_sim/diagnostics/` | 运行事件分析与诊断报告 |
-| `src/lte_sim/security_engine/` | SRTP 实现、测试向量和 UDP 实验 |
+| `src/lte_sim/security_engine/` | SRTP/SRTCP、Session lifecycle、NAS EEA2/EIA2、测试向量和 UDP 实验 |
 | `src/lte_sim/web/` | 浏览器与 Windows 客户端共用的页面 |
 | `scenarios/` | YAML 场景及格式定义 |
 | `devtools/` | 测试和交付检查工具 |
@@ -84,7 +84,7 @@ UDP 实验在主控电脑本机收发。它与 Attach 中的 NAS Security Mode �
 .\.venv\Scripts\python.exe devtools/validation/source_self_test.py
 ```
 
-它会执行核心运行回归，并实际构建 wheel、安装到隔离目录，从项目目录外加载 package-local `scenarios/`，用于验证“新 clone / wheel 安装”是否完整。
+源码自检先运行核心测试，再构建 wheel 并安装到隔离目录，从项目目录外加载包内场景，检查安装资源是否齐全。
 
 准备正式交付包时再运行更严格的完整自检：
 
@@ -92,7 +92,7 @@ UDP 实验在主控电脑本机收发。它与 Attach 中的 NAS Security Mode �
 .\.venv\Scripts\python.exe devtools/validation/self_test.py
 ```
 
-该入口额外检查 `docs/`、前端/API 契约、流程图和全部回归测试。两类自检职责分开，避免源码运行问题与本地交付材料缺失混在一起。 v6.0.4 封包前全量回归为 **394 / 394 PASS**。
+完整自检还检查文档、页面/API 对应关系和流程图。v6.1.2 在 Windows 上复测：全量 432 项通过，源码测试 163 项通过，wheel 构建和隔离安装通过。仓库不包含本地交付文档，完整自检需要在带有 docs 的交付副本中执行。
 
 ## Windows 和双机运行
 

@@ -70,7 +70,7 @@ def test_lan_controller_and_modem_agent_use_two_protocol_sockets_and_management(
         assert (tmp_path / "controller-runs").exists()
         assert not (tmp_path / "agent-runs").exists()
 
-        # v6.0.4: terminal archive must come from the complete transaction
+        # v6.1.2: terminal archive must come from the complete transaction
         # evidence transfer, not the recent Management Snapshot window.
         tx = archived_state["flow"]["transactionId"]
         agent_events = [row for row in agent.store.snapshot()["runtimeEvents"] if row.get("transactionId") == tx]

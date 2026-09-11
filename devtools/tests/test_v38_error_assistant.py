@@ -12,10 +12,10 @@ def read(rel: str) -> str:
 
 
 def test_v38_version_and_learning_notes_are_current():
-    assert read("VERSION").strip() == "6.0.4"
-    assert default_state()["version"] == "6.0.4"
+    assert read("VERSION").strip() == "6.1.2"
+    assert default_state()["version"] == "6.1.2"
     notes = read("docs/学习内容.md")
-    assert "当前版本：v6.0.4" in notes
+    assert "当前版本：v6.1.2" in notes
     assert "v3.8 Error Assistant" in notes
     assert len(notes) > 15000
     for topic in (

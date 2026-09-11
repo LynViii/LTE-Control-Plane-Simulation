@@ -465,6 +465,22 @@ def management_state_snapshot(state: dict) -> dict:
         essential["managementSnapshotReduced"] = True
         result = _truncate_management_strings(essential, 160)
 
+    # Security evidence grew in v6.1.0, so the size-reduction loop can now
+    # reach the log window more often.  Re-add the two peer-connection facts
+    # after compaction: they are operational evidence used by LAN diagnostics
+    # and must not disappear merely because unrelated event payloads grew.
+    if "logs" in state:
+        peer_messages = {"AP-Modem socket connected", "Modem-eNB socket connected"}
+        critical = _compact_management_value([
+            row for row in state.get("logs", []) if row.get("message") in peer_messages
+        ])
+        merged = {
+            row.get("id"): row
+            for row in ((result.get("logs") or []) + critical)
+            if isinstance(row, dict) and row.get("id")
+        }
+        result["logs"] = sorted(merged.values(), key=lambda row: row.get("time") or "")[-56:]
+
     if _json_size(result) >= 256 * 1024:
         raise RuntimeError("management snapshot exceeded frame safety limit")
     return result

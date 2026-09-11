@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import pytest
 
@@ -12,8 +13,8 @@ def read(rel: str) -> str:
 
 def test_v59_version_and_startup_mode_is_before_overview():
     source = read("src/lte_sim/startup_ui.py")
-    assert read("VERSION").strip() == "6.0.4"
-    assert 'version = "6.0.4"' in read("pyproject.toml")
+    assert read("VERSION").strip() == "6.1.2"
+    assert 'version = "6.1.2"' in read("pyproject.toml")
     assert 'root.after_idle(lambda: root.state("zoomed"))' not in source
     assert '第 1 步 · 选择模式' in source and '启动摘要' not in source
     assert 'width=1160, height=760' in source
@@ -96,10 +97,19 @@ def test_v59_manual_field_error_lists_real_fields():
 def test_v59_runs_folder_helper_creates_and_opens_trusted_directory(tmp_path, monkeypatch):
     target = tmp_path / "runs"
     calls = []
-    monkeypatch.setattr("lte_sim.http_api.subprocess.Popen", lambda command, **kwargs: calls.append(command))
+    if os.name == "nt":
+        # Windows implementation uses os.startfile(), not subprocess.Popen().
+        # Patch the API that is actually executed so this test remains valid
+        # on the platform it claims to cover.
+        monkeypatch.setattr("lte_sim.http_api.os.startfile", lambda path: calls.append(path))
+    else:
+        monkeypatch.setattr("lte_sim.http_api.subprocess.Popen", lambda command, **kwargs: calls.append(command))
     open_local_folder(target)
     assert target.is_dir()
-    assert calls and str(target.resolve()) in calls[0]
+    if os.name == "nt":
+        assert calls == [str(target.resolve())]
+    else:
+        assert calls and str(target.resolve()) in calls[0]
     assert _is_loopback_client("127.0.0.1") is True
     assert _is_loopback_client("::1") is True
     assert _is_loopback_client("192.168.1.23") is False
