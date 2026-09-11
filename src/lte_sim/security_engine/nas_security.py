@@ -32,6 +32,13 @@ NAS_BEARER = 0
 EPS_MOBILITY_MANAGEMENT_PD = 0x07
 SHT_INTEGRITY = 0x01
 SHT_INTEGRITY_CIPHERED = 0x02
+SHT_INTEGRITY_NEW_CONTEXT = 0x03
+SHT_INTEGRITY_CIPHERED_NEW_CONTEXT = 0x04
+
+_NEW_CONTEXT_KINDS = {
+    "NAS_SECURITY_MODE_COMMAND",
+    "NAS_SECURITY_MODE_COMPLETE",
+}
 
 MESSAGE_TYPES = {
     "NAS_ATTACH_ACCEPT": 0x42,
@@ -178,27 +185,60 @@ class NasSecurityContext:
         if self._closed:
             raise NasSecurityError("INVALID_STATE", "NAS security context closed")
 
-    def protect(self, plain_pdu: bytes, *, direction: int, ciphered: bool = True) -> bytes:
+    def protect(
+        self,
+        plain_pdu: bytes,
+        *,
+        direction: int,
+        ciphered: bool = True,
+        new_security_context: bool | None = None,
+    ) -> bytes:
         with self._lock:
             self._require_open()
             count32 = self._tx_count[direction]
             if not 0 <= count32 <= 0xFFFFFFFF:
                 raise NasSecurityError("NAS_COUNT_EXHAUSTED", "NAS COUNT exhausted; establish fresh security context")
+
+            # TS 24.301 uses dedicated Security Header Types for the two
+            # messages that establish/confirm a new EPS security context:
+            #   SMC:  integrity protected with new EPS security context (3)
+            #   SMC Complete: integrity protected and ciphered with new context (4).
+            # Infer this from the project NAS message kind by default while
+            # retaining an explicit override for negative/conformance tests.
+            if new_security_context is None:
+                try:
+                    kind, _fields = NasPlainPduCodec.decode(bytes(plain_pdu))
+                except NasSecurityError:
+                    kind = None
+                new_security_context = kind in _NEW_CONTEXT_KINDS
+
             sequence = count32 & 0xFF
             protected_payload = eea2_crypt(self._enc_key, count32, self.bearer, direction, plain_pdu) if ciphered else bytes(plain_pdu)
             mac_input = bytes([sequence]) + protected_payload
             mac = eia2_mac(self._integrity_key, count32, self.bearer, direction, mac_input)
-            sht = SHT_INTEGRITY_CIPHERED if ciphered else SHT_INTEGRITY
+            if new_security_context:
+                sht = SHT_INTEGRITY_CIPHERED_NEW_CONTEXT if ciphered else SHT_INTEGRITY_NEW_CONTEXT
+            else:
+                sht = SHT_INTEGRITY_CIPHERED if ciphered else SHT_INTEGRITY
             packet = bytes([(sht << 4) | EPS_MOBILITY_MANAGEMENT_PD]) + mac + bytes([sequence]) + protected_payload
             self._tx_count[direction] = count32 + 1
             self.last = {
                 "operation": "protect", "direction": direction, "count": count32, "sequence": sequence,
-                "ciphered": ciphered, "macHex": mac.hex().upper(), "plainSha256": hashlib.sha256(plain_pdu).hexdigest().upper(),
+                "ciphered": ciphered, "newSecurityContext": bool(new_security_context), "securityHeaderType": sht,
+                "macHex": mac.hex().upper(), "plainSha256": hashlib.sha256(plain_pdu).hexdigest().upper(),
                 "protectedSha256": hashlib.sha256(packet).hexdigest().upper(),
             }
             return packet
 
-    def unprotect(self, protected_pdu: bytes, *, direction: int, expected_kind: str | None = None, expected_ciphered: bool | None = None) -> bytes:
+    def unprotect(
+        self,
+        protected_pdu: bytes,
+        *,
+        direction: int,
+        expected_kind: str | None = None,
+        expected_ciphered: bool | None = None,
+        expected_new_security_context: bool | None = None,
+    ) -> bytes:
         with self._lock:
             self._require_open()
             packet = bytes(protected_pdu)
@@ -208,12 +248,17 @@ class NasSecurityContext:
             if (first & 0x0F) != EPS_MOBILITY_MANAGEMENT_PD:
                 raise NasSecurityError("INVALID_NAS_PDU", "Protected NAS protocol discriminator invalid")
             sht = first >> 4
-            if sht not in {SHT_INTEGRITY, SHT_INTEGRITY_CIPHERED}:
+            valid_sht = {
+                SHT_INTEGRITY, SHT_INTEGRITY_CIPHERED,
+                SHT_INTEGRITY_NEW_CONTEXT, SHT_INTEGRITY_CIPHERED_NEW_CONTEXT,
+            }
+            if sht not in valid_sht:
                 raise NasSecurityError("INVALID_NAS_SECURITY_HEADER", f"Unsupported NAS security header type {sht}")
             received_mac = packet[1:5]
             sequence = packet[5]
             protected_payload = packet[6:]
-            ciphered = sht == SHT_INTEGRITY_CIPHERED
+            ciphered = sht in {SHT_INTEGRITY_CIPHERED, SHT_INTEGRITY_CIPHERED_NEW_CONTEXT}
+            new_security_context = sht in {SHT_INTEGRITY_NEW_CONTEXT, SHT_INTEGRITY_CIPHERED_NEW_CONTEXT}
             if expected_ciphered is not None and ciphered is not bool(expected_ciphered):
                 mode = "integrity+ciphering" if expected_ciphered else "integrity-only"
                 actual = "integrity+ciphering" if ciphered else "integrity-only"
@@ -232,10 +277,26 @@ class NasSecurityContext:
             kind, _fields = NasPlainPduCodec.decode(plain)
             if expected_kind is not None and kind != expected_kind:
                 raise NasSecurityError("NAS_MESSAGE_MISMATCH", f"Expected {expected_kind}, recovered {kind}")
+
+            # The project codec knows the four protected NAS message kinds used
+            # by this simulator, so enforce the TS 24.301 new-context header
+            # semantics before committing receiver COUNT/replay state.
+            required_new_context = kind in _NEW_CONTEXT_KINDS
+            if expected_new_security_context is not None:
+                required_new_context = bool(expected_new_security_context)
+            if new_security_context is not required_new_context:
+                expected_mode = "new EPS security context" if required_new_context else "current EPS security context"
+                actual_mode = "new EPS security context" if new_security_context else "current EPS security context"
+                raise NasSecurityError(
+                    "NAS_SECURITY_CONTEXT_MODE_MISMATCH",
+                    f"Expected {expected_mode} header for {kind}, got {actual_mode}",
+                )
+
             tracker.replay.commit(count32)
             self.last = {
                 "operation": "unprotect", "direction": direction, "count": count32, "sequence": sequence,
-                "ciphered": ciphered, "macHex": received_mac.hex().upper(), "plainSha256": hashlib.sha256(plain).hexdigest().upper(),
+                "ciphered": ciphered, "newSecurityContext": new_security_context, "securityHeaderType": sht,
+                "macHex": received_mac.hex().upper(), "plainSha256": hashlib.sha256(plain).hexdigest().upper(),
                 "protectedSha256": hashlib.sha256(packet).hexdigest().upper(), "messageKind": kind,
             }
             return plain
