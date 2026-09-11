@@ -11,7 +11,18 @@ permissions:
 
 jobs:
   source-validation:
-    runs-on: ubuntu-latest
+    name: Source validation (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.13"
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
 
     steps:
@@ -21,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Set up Node.js
